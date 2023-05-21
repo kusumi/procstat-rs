@@ -23,7 +23,7 @@ impl Buffer {
         buffer
     }
 
-    pub fn set_reader(&mut self, f: &str) -> Result<(), std::io::Error> {
+    pub fn set_reader(&mut self, f: &str) -> std::io::Result<()> {
         let fp = std::fs::File::open(f)?;
         self.reader = Some(std::io::BufReader::new(fp));
         self.path = String::from(f);
@@ -48,13 +48,13 @@ impl Buffer {
         ret
     }
 
-    pub fn update(&mut self) -> Result<(), std::io::Error> {
+    pub fn update(&mut self) -> std::io::Result<()> {
         if self.is_dead() {
             return Ok(());
         }
         self.block_till_ready();
         let r = self.reader.as_mut().unwrap();
-        let tmp = r.seek(std::io::SeekFrom::Current(0))?;
+        let tmp = r.stream_position()?;
         r.seek(std::io::SeekFrom::Start(0))?; // affects BufRead::lines
         self.maxline = 0;
         for _ in r./*by_ref().*/lines() {
@@ -72,7 +72,7 @@ impl Buffer {
         standout: &mut bool,
         showlnum: bool,
         blinkline: bool,
-    ) -> Result<(), std::io::Error> {
+    ) -> std::io::Result<()> {
         s.clear();
         if self.reader.as_mut().unwrap().read_line(s)? == 0 || s.is_empty() {
             return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
@@ -108,7 +108,7 @@ impl Buffer {
     }
 
     // caller needs to test if ready
-    pub fn clear(&mut self) -> Result<(), std::io::Error> {
+    pub fn clear(&mut self) -> std::io::Result<()> {
         self.reader
             .as_mut()
             .unwrap()

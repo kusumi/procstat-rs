@@ -1,6 +1,14 @@
+use crate::UserData;
+
+#[cfg(feature = "curses")]
+use crate::curses as screen;
+
+#[cfg(feature = "stdout")]
+use crate::stdout as screen;
+
 #[derive(Debug, Default)]
 pub struct Panel {
-    scr: crate::Screen,
+    scr: screen::Screen,
     ylen: usize,
     xlen: usize,
     ypos: usize,
@@ -8,7 +16,7 @@ pub struct Panel {
 }
 
 pub trait PanelImpl {
-    fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &crate::UserData) -> Self;
+    fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &UserData) -> Self;
     fn get_ylen(&self) -> usize;
     fn get_xlen(&self) -> usize;
     fn get_ypos(&self) -> usize;
@@ -17,26 +25,19 @@ pub trait PanelImpl {
     fn set_focus(&mut self, _t: bool) {}
     fn refresh(&mut self);
     fn erase(&mut self);
-    fn resize(
-        &mut self,
-        ylen: usize,
-        xlen: usize,
-        ypos: usize,
-        xpos: usize,
-        dat: &mut crate::UserData,
-    );
+    fn resize(&mut self, ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &mut UserData);
     fn print(&self, y: usize, x: usize, standout: bool, standout_attr: u32, s: &str);
 }
 
 impl Drop for Panel {
     fn drop(&mut self) {
-        crate::delete_screen(&mut self.scr).unwrap();
+        screen::delete_screen(&mut self.scr).unwrap();
     }
 }
 
 impl PanelImpl for Panel {
-    fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &crate::UserData) -> Self {
-        let scr = crate::alloc_screen(ylen, xlen, ypos, xpos).unwrap();
+    fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &UserData) -> Self {
+        let scr = screen::alloc_screen(ylen, xlen, ypos, xpos).unwrap();
         let mut panel = Panel {
             scr,
             ylen,
@@ -44,7 +45,7 @@ impl PanelImpl for Panel {
             ypos,
             xpos,
         };
-        crate::bkgd_screen(&mut panel.scr, dat).unwrap();
+        screen::bkgd_screen(&mut panel.scr, dat).unwrap();
         panel
     }
 
@@ -65,44 +66,30 @@ impl PanelImpl for Panel {
     }
 
     fn refresh(&mut self) {
-        crate::refresh_screen(&mut self.scr).unwrap();
+        screen::refresh_screen(&mut self.scr).unwrap();
     }
 
     fn erase(&mut self) {
-        crate::erase_screen(&mut self.scr).unwrap();
+        screen::erase_screen(&mut self.scr).unwrap();
     }
 
-    fn resize(
-        &mut self,
-        ylen: usize,
-        xlen: usize,
-        ypos: usize,
-        xpos: usize,
-        dat: &mut crate::UserData,
-    ) {
+    fn resize(&mut self, ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &mut UserData) {
         self._resize(ylen, xlen, ypos, xpos, dat);
         self.refresh();
     }
 
     fn print(&self, y: usize, x: usize, standout: bool, standout_attr: u32, s: &str) {
-        crate::print_screen(&self.scr, y, x, standout, standout_attr, s).unwrap();
+        screen::print_screen(&self.scr, y, x, standout, standout_attr, s).unwrap();
     }
 }
 
 impl Panel {
-    fn _resize(
-        &mut self,
-        ylen: usize,
-        xlen: usize,
-        ypos: usize,
-        xpos: usize,
-        dat: &mut crate::UserData,
-    ) {
+    fn _resize(&mut self, ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &mut UserData) {
         self.ylen = ylen;
         self.xlen = xlen;
         self.ypos = ypos;
         self.xpos = xpos;
-        crate::resize_screen(&mut self.scr, self.ylen, self.xlen, dat).unwrap();
-        crate::move_screen(&mut self.scr, self.ypos, self.xpos).unwrap();
+        screen::resize_screen(&mut self.scr, self.ylen, self.xlen, dat).unwrap();
+        screen::move_screen(&mut self.scr, self.ypos, self.xpos).unwrap();
     }
 }

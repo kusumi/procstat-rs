@@ -1,4 +1,4 @@
-procstat-rs ([v0.1.0](https://github.com/kusumi/procstat-rs/releases/tag/v0.1.0))
+procstat-rs ([v0.1.1](https://github.com/kusumi/procstat-rs/releases/tag/v0.1.1))
 ========
 
 ## About
@@ -23,8 +23,8 @@ or
 
 ## Usage
 
-    $ ./target/debug/procstat-rs
-    usage: ./target/debug/procstat-rs [<options>] <paths>
+    $ ./target/release/procstat-rs
+    usage: ./target/release/procstat-rs [<options>] <paths>
     
     Options:
         -c STRING           Set column layout. e.g. "-c 123" to make 3 columns

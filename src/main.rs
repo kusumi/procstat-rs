@@ -13,20 +13,20 @@ mod window;
 mod curses;
 
 #[cfg(feature = "curses")]
-use curses::*;
+use curses as screen;
 
 // stdout
 #[cfg(feature = "stdout")]
 mod stdout;
 
 #[cfg(feature = "stdout")]
-use stdout::*;
+use stdout as screen;
 
 lazy_static! {
     pub static ref MTX: std::sync::Mutex<i32> = std::sync::Mutex::new(0);
 }
 
-const VERSION: [i32; 3] = [0, 1, 0];
+const VERSION: [i32; 3] = [0, 1, 1];
 
 #[derive(Debug)]
 struct UserOption {
@@ -65,7 +65,7 @@ impl Default for UserOption {
 #[allow(dead_code)]
 pub struct UserData {
     opt: UserOption,
-    term: Terminal,
+    term: screen::Terminal,
     color_attr: u32,
     standout_attr: u32,
 }
@@ -104,7 +104,7 @@ extern "C" fn sigint_handler(_: libc::c_int) {
 
 extern "C" fn atexit_handler() {
     log::info!("{}: atexit", stringify!(atexit_handler));
-    cleanup_screen().unwrap();
+    screen::cleanup_screen().unwrap();
 }
 
 fn main() {
@@ -159,10 +159,7 @@ fn main() {
     opts.optflag("v", "version", "Print version and exit");
     opts.optflag("h", "help", "print this help menu");
 
-    let matches = match opts.parse(&args[1..]) {
-        Ok(v) => v,
-        Err(e) => panic!("{}", e),
-    };
+    let matches = opts.parse(&args[1..]).unwrap();
     if matches.opt_present("v") {
         print_version();
         std::process::exit(1);
@@ -180,11 +177,11 @@ fn main() {
         None => "".to_string(),
     };
     dat.opt.fgcolor = match matches.opt_str("fg") {
-        Some(v) => string_to_color(&v),
+        Some(v) => screen::string_to_color(&v),
         None => -1,
     };
     dat.opt.bgcolor = match matches.opt_str("bg") {
-        Some(v) => string_to_color(&v),
+        Some(v) => screen::string_to_color(&v),
         None => -1,
     };
     dat.opt.sinterval = match matches.opt_str("t") {
@@ -223,15 +220,16 @@ fn main() {
         }
     }
 
-    let home = match dirs::home_dir() {
-        Some(v) => v.into_os_string().into_string().unwrap(),
-        None => panic!("No home directory found"),
-    };
     if dat.opt.debug {
+        let home = dirs::home_dir()
+            .unwrap()
+            .into_os_string()
+            .into_string()
+            .unwrap();
         init_log(&util::join_path(&home, ".procstat.log"));
     }
 
-    match init_screen(&mut dat) {
+    match screen::init_screen(&mut dat) {
         Ok(_) if dat.opt.debug => log::info!("{:?}", dat.term),
         Ok(_) => (),
         Err(e) => panic!("{}", e),
@@ -250,7 +248,7 @@ fn main() {
     unsafe {
         co.thread_create(&mut dat);
         while !INTERRUPTED {
-            co.parse_event(read_incoming(), &mut dat);
+            co.parse_event(screen::read_incoming(), &mut dat);
         }
         co.thread_join();
     }

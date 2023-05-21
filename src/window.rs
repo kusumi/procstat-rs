@@ -1,25 +1,23 @@
+use crate::buffer;
+use crate::frame;
+use crate::panel;
 use crate::panel::PanelImpl;
+use crate::UserData;
 
 #[derive(Debug)]
 pub struct Window {
-    panel: crate::panel::Panel,
-    frame: crate::frame::Frame,
-    buffer: crate::buffer::Buffer,
+    panel: panel::Panel,
+    frame: frame::Frame,
+    buffer: buffer::Buffer,
     offset: usize,
 }
 
 impl Window {
-    pub fn new(
-        ylen: usize,
-        xlen: usize,
-        ypos: usize,
-        xpos: usize,
-        dat: &crate::UserData,
-    ) -> Window {
+    pub fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &UserData) -> Window {
         let mut w = Window {
-            frame: crate::frame::Frame::new(ylen, xlen, ypos, xpos, dat),
-            panel: crate::panel::Panel::new(ylen - 2, xlen - 2, ypos + 1, xpos + 1, dat),
-            buffer: crate::buffer::Buffer::new(),
+            frame: frame::Frame::new(ylen, xlen, ypos, xpos, dat),
+            panel: panel::Panel::new(ylen - 2, xlen - 2, ypos + 1, xpos + 1, dat),
+            buffer: buffer::Buffer::new(),
             offset: 0,
         };
         w.frame.refresh();
@@ -37,7 +35,7 @@ impl Window {
         xlen: usize,
         ypos: usize,
         xpos: usize,
-        dat: &mut crate::UserData,
+        dat: &mut UserData,
     ) {
         self.frame.resize(ylen, xlen, ypos, xpos, dat);
         self.panel
@@ -45,7 +43,7 @@ impl Window {
         self.offset = 0;
     }
 
-    pub fn attach_buffer(&mut self, f: &str) -> Result<(), std::io::Error> {
+    pub fn attach_buffer(&mut self, f: &str) -> std::io::Result<()> {
         assert!(self.buffer.get_path().as_str() == "");
         self.buffer.set_reader(f)?; // do this first
         self.frame.set_title(f);

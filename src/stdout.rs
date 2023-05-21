@@ -1,4 +1,6 @@
+use crate::UserData;
 #[cfg(feature = "stdout")]
+use crate::MTX;
 use std::io::Write;
 
 pub const KBD_ERR: isize = 0xDEAD;
@@ -50,22 +52,22 @@ impl Screen {
     }
 }
 
-fn update_terminal_size(dat: &mut crate::UserData) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+fn update_terminal_size(dat: &mut UserData) -> Result<(), Box<dyn std::error::Error>> {
+    let _mtx = MTX.lock().unwrap();
     if let Some((w, h)) = term_size::dimensions() {
         dat.term.lines = h;
         dat.term.cols = w;
+        Ok(())
     } else {
-        return Err(Box::new(std::io::Error::from(std::io::ErrorKind::Other)));
+        Err(Box::new(std::io::Error::from(std::io::ErrorKind::Other)))
     }
-    Ok(())
 }
 
 pub fn string_to_color(_arg: &str) -> i16 {
     -1
 }
 
-pub fn init_screen(dat: &mut crate::UserData) -> Result<(), Box<dyn std::error::Error>> {
+pub fn init_screen(dat: &mut UserData) -> Result<(), Box<dyn std::error::Error>> {
     update_terminal_size(dat)
 }
 
@@ -94,14 +96,14 @@ pub fn alloc_screen(
     ypos: usize,
     xpos: usize,
 ) -> Result<Screen, Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     let scr = Screen::new(ylen, xlen, ypos, xpos);
     println!("Allocate {:?}", scr);
     Ok(scr)
 }
 
 pub fn delete_screen(scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     println!("Delete {:?}", scr);
     Ok(())
 }
@@ -114,13 +116,13 @@ pub fn print_screen(
     _standout_attr: u32,
     s: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     println!("Print {:?}: {} {} {} \"{}\"", scr, y, x, standout, s);
     Ok(())
 }
 
 pub fn refresh_screen(_scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     std::io::stdout().flush().unwrap();
     Ok(())
 }
@@ -133,7 +135,7 @@ pub fn resize_screen(
     _scr: &mut Screen,
     _ylen: usize,
     _xlen: usize,
-    dat: &mut crate::UserData,
+    dat: &mut UserData,
 ) -> Result<(), Box<dyn std::error::Error>> {
     update_terminal_size(dat)
 }
@@ -150,9 +152,6 @@ pub fn box_screen(_scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn bkgd_screen(
-    _scr: &mut Screen,
-    _dat: &crate::UserData,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn bkgd_screen(_scr: &mut Screen, _dat: &UserData) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }

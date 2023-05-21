@@ -1,6 +1,17 @@
+use crate::util;
+use crate::window;
+use crate::UserData;
+use crate::INTERRUPTED;
+
+#[cfg(feature = "curses")]
+use crate::curses as screen;
+
+#[cfg(feature = "stdout")]
+use crate::stdout as screen;
+
 #[derive(Debug, Default)]
 pub struct Container {
-    v: Vec<std::sync::Arc<std::sync::Mutex<crate::window::Window>>>,
+    v: Vec<std::sync::Arc<std::sync::Mutex<window::Window>>>,
     t: Vec<std::thread::JoinHandle<()>>,
     i: usize,
 }
@@ -14,7 +25,7 @@ impl Drop for Container {
 */
 
 impl Container {
-    pub fn new(args: Vec<String>, dat: &mut crate::UserData) -> Self {
+    pub fn new(args: Vec<String>, dat: &mut UserData) -> Self {
         let mut co = Container {
             v: Vec::new(),
             t: Vec::new(),
@@ -22,7 +33,7 @@ impl Container {
         };
         co.build_window(dat);
         for (i, f) in args.iter().enumerate() {
-            if !crate::util::is_regular_file(f) {
+            if !util::is_regular_file(f) {
                 log::info!("No such regular file {}", f);
                 continue;
             }
@@ -71,7 +82,7 @@ impl Container {
         self.v[begi].lock().unwrap().focus(true);
     }
 
-    fn build_window(&mut self, dat: &mut crate::UserData) {
+    fn build_window(&mut self, dat: &mut UserData) {
         if !dat.opt.rotatecol {
             self.build_window_xy(dat);
         } else {
@@ -79,7 +90,7 @@ impl Container {
         }
     }
 
-    fn build_window_xy(&mut self, dat: &mut crate::UserData) {
+    fn build_window_xy(&mut self, dat: &mut UserData) {
         let mut seq = 0;
         let xx = dat.term.get_terminal_cols();
         let yy = dat.term.get_terminal_lines();
@@ -112,7 +123,7 @@ impl Container {
         }
     }
 
-    fn build_window_yx(&mut self, dat: &mut crate::UserData) {
+    fn build_window_yx(&mut self, dat: &mut UserData) {
         let mut seq = 0;
         let yy = dat.term.get_terminal_lines();
         let xx = dat.term.get_terminal_cols();
@@ -152,7 +163,7 @@ impl Container {
         xlen: usize,
         ypos: usize,
         xpos: usize,
-        dat: &mut crate::UserData,
+        dat: &mut UserData,
     ) {
         if let Some(p) = self.v.get_mut(seq) {
             let w = &mut p.lock().unwrap();
@@ -160,20 +171,20 @@ impl Container {
             w.signal();
         } else {
             self.v.push(std::sync::Arc::new(std::sync::Mutex::new(
-                crate::window::Window::new(ylen, xlen, ypos, xpos, dat),
+                window::Window::new(ylen, xlen, ypos, xpos, dat),
             )));
         }
     }
 
     // XXX self.v[self.i].lock() blocks when window threads are alive, why ?
-    pub fn parse_event(&mut self, x: isize, dat: &mut crate::UserData) {
-        if x == crate::KBD_ERR {
-        } else if x == crate::KBD_RESIZE || x == crate::kbd_ctrl('l' as isize) {
-            crate::clear_terminal().unwrap();
+    pub fn parse_event(&mut self, x: isize, dat: &mut UserData) {
+        if x == screen::KBD_ERR {
+        } else if x == screen::KBD_RESIZE || x == screen::kbd_ctrl('l' as isize) {
+            screen::clear_terminal().unwrap();
             self.build_window(dat);
-        } else if x == 'h' as isize || x == crate::KBD_LEFT {
+        } else if x == 'h' as isize || x == screen::KBD_LEFT {
             self.goto_prev_window();
-        } else if x == 'l' as isize || x == crate::KBD_RIGHT {
+        } else if x == 'l' as isize || x == screen::KBD_RIGHT {
             self.goto_next_window();
         } else if x == '0' as isize {
             let w = &mut self.v[self.i].lock().unwrap();
@@ -183,27 +194,27 @@ impl Container {
             let w = &mut self.v[self.i].lock().unwrap();
             w.goto_tail();
             w.signal();
-        } else if x == 'k' as isize || x == crate::KBD_UP {
+        } else if x == 'k' as isize || x == screen::KBD_UP {
             let w = &mut self.v[self.i].lock().unwrap();
             w.goto_current(-1);
             w.signal();
-        } else if x == 'j' as isize || x == crate::KBD_DOWN {
+        } else if x == 'j' as isize || x == screen::KBD_DOWN {
             let w = &mut self.v[self.i].lock().unwrap();
             w.goto_current(1);
             w.signal();
-        } else if x == crate::kbd_ctrl('B' as isize) {
+        } else if x == screen::kbd_ctrl('B' as isize) {
             let w = &mut self.v[self.i].lock().unwrap();
             w.goto_current(-(dat.term.get_terminal_lines() as isize));
             w.signal();
-        } else if x == crate::kbd_ctrl('U' as isize) {
+        } else if x == screen::kbd_ctrl('U' as isize) {
             let w = &mut self.v[self.i].lock().unwrap();
             w.goto_current(-(dat.term.get_terminal_lines() as isize) / 2);
             w.signal();
-        } else if x == crate::kbd_ctrl('F' as isize) {
+        } else if x == screen::kbd_ctrl('F' as isize) {
             let w = &mut self.v[self.i].lock().unwrap();
             w.goto_current(dat.term.get_terminal_lines() as isize);
             w.signal();
-        } else if x == crate::kbd_ctrl('D' as isize) {
+        } else if x == screen::kbd_ctrl('D' as isize) {
             let w = &mut self.v[self.i].lock().unwrap();
             w.goto_current(dat.term.get_terminal_lines() as isize / 2);
             w.signal();
@@ -214,7 +225,7 @@ impl Container {
     }
 
     // create window threads
-    pub fn thread_create(&mut self, dat: &mut crate::UserData) {
+    pub fn thread_create(&mut self, dat: &mut UserData) {
         for v in self.v.iter_mut() {
             let sinterval = dat.opt.sinterval;
             let minterval = dat.opt.minterval;
@@ -241,7 +252,7 @@ impl Container {
                     w.timedwait(t);
                 }
                 unsafe {
-                    while !crate::INTERRUPTED {
+                    while !INTERRUPTED {
                         let w = &mut cv.lock().unwrap();
                         w.repaint(showlnum, foldline, blinkline, standout_attr);
                         w.timedwait(sinterval * 1000 + minterval);

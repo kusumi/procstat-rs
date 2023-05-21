@@ -1,4 +1,6 @@
+use crate::UserData;
 #[cfg(feature = "curses")]
+use crate::MTX;
 
 // taken from /usr/include/curses.h
 // XXX ncurses::KEY_xxx ?
@@ -60,8 +62,8 @@ impl Screen {
     }
 }
 
-fn update_terminal_size(dat: &mut crate::UserData) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+fn update_terminal_size(dat: &mut UserData) -> Result<(), Box<dyn std::error::Error>> {
+    let _mtx = MTX.lock().unwrap();
     let mut y = 0;
     let mut x = 0;
     ncurses::getmaxyx(ncurses::stdscr(), &mut y, &mut x);
@@ -84,7 +86,7 @@ pub fn string_to_color(arg: &str) -> i16 {
     }
 }
 
-pub fn init_screen(dat: &mut crate::UserData) -> Result<(), Box<dyn std::error::Error>> {
+pub fn init_screen(dat: &mut UserData) -> Result<(), Box<dyn std::error::Error>> {
     ncurses::initscr();
     ncurses::keypad(ncurses::stdscr(), true);
     ncurses::noecho();
@@ -119,7 +121,7 @@ pub fn read_incoming() -> isize {
 }
 
 pub fn clear_terminal() -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     ncurses::wclear(ncurses::stdscr());
     ncurses::wrefresh(ncurses::stdscr());
     Ok(())
@@ -138,7 +140,7 @@ pub fn alloc_screen(
     ypos: usize,
     xpos: usize,
 ) -> Result<Screen, Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     let scr = Screen::new(ylen, xlen, ypos, xpos);
     let win = scr.win.unwrap();
     ncurses::scrollok(win, false);
@@ -148,7 +150,7 @@ pub fn alloc_screen(
 }
 
 pub fn delete_screen(scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     let win = scr.win.unwrap();
     ncurses::delwin(win);
     Ok(())
@@ -162,7 +164,7 @@ pub fn print_screen(
     standout_attr: ncurses::attr_t,
     s: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     let win = scr.win.unwrap();
     let attr = if standout {
         if standout_attr == 0 {
@@ -181,14 +183,14 @@ pub fn print_screen(
 }
 
 pub fn refresh_screen(scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     let win = scr.win.unwrap();
     ncurses::wrefresh(win);
     Ok(())
 }
 
 pub fn erase_screen(scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     let win = scr.win.unwrap();
     ncurses::werase(win);
     Ok(())
@@ -198,9 +200,9 @@ pub fn resize_screen(
     scr: &mut Screen,
     ylen: usize,
     xlen: usize,
-    dat: &mut crate::UserData,
+    dat: &mut UserData,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     let win = scr.win.unwrap();
     ncurses::wresize(win, ylen as i32, xlen as i32);
     update_terminal_size(dat)?;
@@ -212,14 +214,14 @@ pub fn move_screen(
     ypos: usize,
     xpos: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     let win = scr.win.unwrap();
     ncurses::mvwin(win, ypos as i32, xpos as i32);
     Ok(())
 }
 
 pub fn box_screen(scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+    let _mtx = MTX.lock().unwrap();
     let win = scr.win.unwrap();
     ncurses::wborder(
         win,
@@ -235,11 +237,8 @@ pub fn box_screen(scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn bkgd_screen(
-    scr: &mut Screen,
-    dat: &crate::UserData,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = crate::MTX.lock().unwrap();
+pub fn bkgd_screen(scr: &mut Screen, dat: &UserData) -> Result<(), Box<dyn std::error::Error>> {
+    let _mtx = MTX.lock().unwrap();
     let win = scr.win.unwrap();
     if dat.color_attr != ncurses::A_NORMAL() {
         ncurses::wbkgd(win, dat.color_attr | ' ' as u32);

@@ -1,17 +1,17 @@
 bin1:
-	cargo build --features=curses
-	# cargo run --features=curses -- ...
+	cargo build --release --features=curses
+	# cargo run --release --features=curses -- ...
 bin2:
-	cargo build --features=stdout
-	# cargo run --features=stdout -- ...
+	cargo build --release --features=stdout
+	# cargo run --release --features=stdout -- ...
 fmt:
 	cargo fmt
 	git status
 clean:
 	cargo clean
 lint1:
-	cargo clippy --fix --features=curses
+	cargo clippy --release --fix --features=curses
 	git status
 lint2:
-	cargo clippy --fix --features=stdout
+	cargo clippy --release --fix --features=stdout
 	git status
