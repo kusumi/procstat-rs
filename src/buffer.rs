@@ -1,3 +1,5 @@
+use crate::util;
+use crate::Result;
 use std::io::BufRead;
 use std::io::Seek;
 
@@ -11,22 +13,23 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let mut buffer = Buffer {
             chunk: Vec::new(),
             reader: None,
-            path: String::from(""),
+            path: "".to_string(),
             curline: 0,
             maxline: 0,
         };
-        buffer.update().unwrap();
-        buffer
+        assert!(buffer.is_dead());
+        buffer.update()?;
+        Ok(buffer)
     }
 
     pub fn set_reader(&mut self, f: &str) -> std::io::Result<()> {
         let fp = std::fs::File::open(f)?;
         self.reader = Some(std::io::BufReader::new(fp));
-        self.path = String::from(f);
+        self.path = f.to_string();
         Ok(())
     }
 
@@ -53,7 +56,7 @@ impl Buffer {
             return Ok(());
         }
         self.block_till_ready();
-        let r = self.reader.as_mut().unwrap();
+        let r = self.reader.as_mut().ok_or(util::error())?;
         let tmp = r.stream_position()?;
         r.seek(std::io::SeekFrom::Start(0))?; // affects BufRead::lines
         self.maxline = 0;
@@ -74,7 +77,7 @@ impl Buffer {
         blinkline: bool,
     ) -> std::io::Result<()> {
         s.clear();
-        if self.reader.as_mut().unwrap().read_line(s)? == 0 || s.is_empty() {
+        if self.reader.as_mut().ok_or(util::error())?.read_line(s)? == 0 || s.is_empty() {
             return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
         }
 
@@ -88,8 +91,7 @@ impl Buffer {
 
         if blinkline {
             if self.curline >= self.chunk.len() {
-                self.chunk
-                    .resize(self.chunk.len() * 2 + 1, String::from(""));
+                self.chunk.resize(self.chunk.len() * 2 + 1, "".to_string());
             }
             *standout =
                 !self.chunk[self.curline].is_empty() && self.chunk[self.curline] != s.as_str();
@@ -111,7 +113,7 @@ impl Buffer {
     pub fn clear(&mut self) -> std::io::Result<()> {
         self.reader
             .as_mut()
-            .unwrap()
+            .ok_or(util::error())?
             .seek(std::io::SeekFrom::Start(0))?;
         self.curline = 0;
         Ok(())

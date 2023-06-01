@@ -1,6 +1,11 @@
+use crate::util;
+use crate::Result;
 use crate::UserData;
 #[cfg(feature = "curses")]
-use crate::MTX;
+
+lazy_static! {
+    static ref MTX: std::sync::Mutex<i32> = std::sync::Mutex::new(0);
+}
 
 // taken from /usr/include/curses.h
 // XXX ncurses::KEY_xxx ?
@@ -42,28 +47,23 @@ impl Terminal {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Screen {
-    win: Option<ncurses::WINDOW>,
+    win: ncurses::WINDOW,
 }
 
 unsafe impl Send for Screen {}
 
-impl Screen {
-    pub fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Self {
+impl Default for Screen {
+    fn default() -> Self {
         Self {
-            win: Some(ncurses::newwin(
-                ylen as i32,
-                xlen as i32,
-                ypos as i32,
-                xpos as i32,
-            )),
+            win: ncurses::newwin(0, 0, 0, 0),
         }
     }
 }
 
-fn update_terminal_size(dat: &mut UserData) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = MTX.lock().unwrap();
+fn update_terminal_size(dat: &mut UserData) -> Result<()> {
+    let _mtx = MTX.lock()?;
     let mut y = 0;
     let mut x = 0;
     ncurses::getmaxyx(ncurses::stdscr(), &mut y, &mut x);
@@ -86,12 +86,12 @@ pub fn string_to_color(arg: &str) -> i16 {
     }
 }
 
-pub fn init_screen(dat: &mut UserData) -> Result<(), Box<dyn std::error::Error>> {
+pub fn init_screen(dat: &mut UserData) -> Result<()> {
     ncurses::initscr();
     ncurses::keypad(ncurses::stdscr(), true);
     ncurses::noecho();
     ncurses::cbreak();
-    if ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE).is_some() {}
+    ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE).ok_or(util::error())?;
     ncurses::wtimeout(ncurses::stdscr(), 500);
     clear_terminal()?;
     update_terminal_size(dat)?;
@@ -103,15 +103,15 @@ pub fn init_screen(dat: &mut UserData) -> Result<(), Box<dyn std::error::Error>>
         dat.color_attr = ncurses::COLOR_PAIR(1);
     }
 
-    match std::env::var("TERM") {
-        Ok(v) if v == "screen" => dat.standout_attr = ncurses::A_REVERSE(),
-        _ => dat.standout_attr = ncurses::A_STANDOUT(),
-    }
+    dat.standout_attr = match std::env::var("TERM") {
+        Ok(v) if v == "screen" => ncurses::A_REVERSE(),
+        _ => ncurses::A_STANDOUT(),
+    };
     Ok(())
 }
 
-pub fn cleanup_screen() -> Result<(), Box<dyn std::error::Error>> {
-    if ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_VISIBLE).is_some() {}
+pub fn cleanup_screen() -> Result<()> {
+    ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_VISIBLE).ok_or(util::error())?;
     ncurses::endwin();
     Ok(())
 }
@@ -120,8 +120,8 @@ pub fn read_incoming() -> isize {
     ncurses::wgetch(ncurses::stdscr()) as isize
 }
 
-pub fn clear_terminal() -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = MTX.lock().unwrap();
+pub fn clear_terminal() -> Result<()> {
+    let _mtx = MTX.lock()?;
     ncurses::wclear(ncurses::stdscr());
     ncurses::wrefresh(ncurses::stdscr());
     Ok(())
@@ -129,119 +129,104 @@ pub fn clear_terminal() -> Result<(), Box<dyn std::error::Error>> {
 
 // used by watch
 #[allow(dead_code)]
-pub fn flash_terminal() -> Result<(), Box<dyn std::error::Error>> {
+pub fn flash_terminal() -> Result<()> {
     ncurses::flash();
     Ok(())
 }
 
-pub fn alloc_screen(
-    ylen: usize,
-    xlen: usize,
-    ypos: usize,
-    xpos: usize,
-) -> Result<Screen, Box<dyn std::error::Error>> {
-    let _mtx = MTX.lock().unwrap();
+pub fn alloc_screen(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Result<Screen> {
+    let _mtx = MTX.lock()?;
     let scr = Screen::new(ylen, xlen, ypos, xpos);
-    let win = scr.win.unwrap();
-    ncurses::scrollok(win, false);
-    ncurses::idlok(win, false);
-    ncurses::keypad(win, true);
+    ncurses::scrollok(scr.win, false);
+    ncurses::idlok(scr.win, false);
+    ncurses::keypad(scr.win, true);
     Ok(scr)
 }
 
-pub fn delete_screen(scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = MTX.lock().unwrap();
-    let win = scr.win.unwrap();
-    ncurses::delwin(win);
-    Ok(())
-}
-
-pub fn print_screen(
-    scr: &Screen,
-    y: usize,
-    x: usize,
-    standout: bool,
-    standout_attr: ncurses::attr_t,
-    s: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = MTX.lock().unwrap();
-    let win = scr.win.unwrap();
-    let attr = if standout {
-        if standout_attr == 0 {
-            // XXX used by Frame::print_title
-            ncurses::A_STANDOUT()
-        } else {
-            standout_attr
+impl Screen {
+    pub fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Self {
+        Self {
+            win: ncurses::newwin(ylen as i32, xlen as i32, ypos as i32, xpos as i32),
         }
-    } else {
-        ncurses::A_NORMAL()
-    };
-    ncurses::wattron(win, attr);
-    ncurses::mvwprintw(win, y as i32, x as i32, s);
-    ncurses::wattroff(win, attr);
-    Ok(())
-}
-
-pub fn refresh_screen(scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = MTX.lock().unwrap();
-    let win = scr.win.unwrap();
-    ncurses::wrefresh(win);
-    Ok(())
-}
-
-pub fn erase_screen(scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = MTX.lock().unwrap();
-    let win = scr.win.unwrap();
-    ncurses::werase(win);
-    Ok(())
-}
-
-pub fn resize_screen(
-    scr: &mut Screen,
-    ylen: usize,
-    xlen: usize,
-    dat: &mut UserData,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = MTX.lock().unwrap();
-    let win = scr.win.unwrap();
-    ncurses::wresize(win, ylen as i32, xlen as i32);
-    update_terminal_size(dat)?;
-    Ok(())
-}
-
-pub fn move_screen(
-    scr: &mut Screen,
-    ypos: usize,
-    xpos: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = MTX.lock().unwrap();
-    let win = scr.win.unwrap();
-    ncurses::mvwin(win, ypos as i32, xpos as i32);
-    Ok(())
-}
-
-pub fn box_screen(scr: &mut Screen) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = MTX.lock().unwrap();
-    let win = scr.win.unwrap();
-    ncurses::wborder(
-        win,
-        ncurses::ACS_VLINE(),
-        ncurses::ACS_VLINE(),
-        ncurses::ACS_HLINE(),
-        ncurses::ACS_HLINE(),
-        ncurses::ACS_ULCORNER(),
-        ncurses::ACS_URCORNER(),
-        ncurses::ACS_LLCORNER(),
-        ncurses::ACS_LRCORNER(),
-    );
-    Ok(())
-}
-
-pub fn bkgd_screen(scr: &mut Screen, dat: &UserData) -> Result<(), Box<dyn std::error::Error>> {
-    let _mtx = MTX.lock().unwrap();
-    let win = scr.win.unwrap();
-    if dat.color_attr != ncurses::A_NORMAL() {
-        ncurses::wbkgd(win, dat.color_attr | ' ' as u32);
     }
-    Ok(())
+
+    pub fn delete(&mut self) -> Result<()> {
+        let _mtx = MTX.lock()?;
+        ncurses::delwin(self.win);
+        Ok(())
+    }
+
+    pub fn print(
+        &self,
+        y: usize,
+        x: usize,
+        standout: bool,
+        standout_attr: u32, // ncurses::attr_t
+        s: &str,
+    ) -> Result<()> {
+        let _mtx = MTX.lock()?;
+        let attr = if standout {
+            if standout_attr == 0 {
+                // XXX used by Frame::print_title
+                ncurses::A_STANDOUT()
+            } else {
+                standout_attr
+            }
+        } else {
+            ncurses::A_NORMAL()
+        };
+        ncurses::wattron(self.win, attr);
+        ncurses::mvwprintw(self.win, y as i32, x as i32, s);
+        ncurses::wattroff(self.win, attr);
+        Ok(())
+    }
+
+    pub fn refresh(&mut self) -> Result<()> {
+        let _mtx = MTX.lock()?;
+        ncurses::wrefresh(self.win);
+        Ok(())
+    }
+
+    pub fn erase(&mut self) -> Result<()> {
+        let _mtx = MTX.lock()?;
+        ncurses::werase(self.win);
+        Ok(())
+    }
+
+    pub fn resize(&mut self, ylen: usize, xlen: usize, dat: &mut UserData) -> Result<()> {
+        let _mtx = MTX.lock()?;
+        ncurses::wresize(self.win, ylen as i32, xlen as i32);
+        update_terminal_size(dat)?;
+        Ok(())
+    }
+
+    pub fn r#move(&mut self, ypos: usize, xpos: usize) -> Result<()> {
+        let _mtx = MTX.lock()?;
+        ncurses::mvwin(self.win, ypos as i32, xpos as i32);
+        Ok(())
+    }
+
+    pub fn r#box(&mut self) -> Result<()> {
+        let _mtx = MTX.lock()?;
+        ncurses::wborder(
+            self.win,
+            ncurses::ACS_VLINE(),
+            ncurses::ACS_VLINE(),
+            ncurses::ACS_HLINE(),
+            ncurses::ACS_HLINE(),
+            ncurses::ACS_ULCORNER(),
+            ncurses::ACS_URCORNER(),
+            ncurses::ACS_LLCORNER(),
+            ncurses::ACS_LRCORNER(),
+        );
+        Ok(())
+    }
+
+    pub fn bkgd(&mut self, dat: &UserData) -> Result<()> {
+        let _mtx = MTX.lock()?;
+        if dat.color_attr != ncurses::A_NORMAL() {
+            ncurses::wbkgd(self.win, dat.color_attr | ' ' as u32);
+        }
+        Ok(())
+    }
 }

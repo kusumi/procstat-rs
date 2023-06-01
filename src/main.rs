@@ -8,25 +8,21 @@ mod panel;
 mod util;
 mod window;
 
-// curses
+const VERSION: [i32; 3] = [0, 1, 2];
+
 #[cfg(feature = "curses")]
 mod curses;
 
 #[cfg(feature = "curses")]
 use curses as screen;
 
-// stdout
 #[cfg(feature = "stdout")]
 mod stdout;
 
 #[cfg(feature = "stdout")]
 use stdout as screen;
 
-lazy_static! {
-    pub static ref MTX: std::sync::Mutex<i32> = std::sync::Mutex::new(0);
-}
-
-const VERSION: [i32; 3] = [0, 1, 1];
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Debug)]
 struct UserOption {
@@ -83,14 +79,14 @@ fn usage(progname: &str, opts: getopts::Options) {
     print!("{}", opts.usage(&brief));
 }
 
-fn init_log(f: &str) {
+fn init_log(f: &str) -> Result<()> {
     simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
         simplelog::LevelFilter::Info,
         simplelog::Config::default(),
-        std::fs::File::create(f).unwrap(),
-    )])
-    .unwrap();
+        std::fs::File::create(f)?,
+    )])?;
     assert!(std::path::Path::new(&f).is_file());
+    Ok(())
 }
 
 static mut INTERRUPTED: bool = false;
@@ -221,19 +217,15 @@ fn main() {
     }
 
     if dat.opt.debug {
-        let home = dirs::home_dir()
-            .unwrap()
-            .into_os_string()
-            .into_string()
-            .unwrap();
-        init_log(&util::join_path(&home, ".procstat.log"));
+        let f = util::join_path(&util::get_home_path(), ".procstat.log");
+        init_log(&f).unwrap();
     }
 
-    match screen::init_screen(&mut dat) {
-        Ok(_) if dat.opt.debug => log::info!("{:?}", dat.term),
-        Ok(_) => (),
-        Err(e) => panic!("{}", e),
-    };
+    if let Err(e) = screen::init_screen(&mut dat) {
+        panic!("{}", e);
+    } else if dat.opt.debug {
+        log::info!("{:?}", dat.term);
+    }
 
     if dat.opt.debug {
         log::info!("{:?}", dat);
@@ -244,11 +236,11 @@ fn main() {
         libc::signal(libc::SIGINT, sigint_handler as usize);
     }
 
-    let mut co = container::Container::new(args, &mut dat);
+    let mut co = container::Container::new(args, &mut dat).unwrap();
     unsafe {
         co.thread_create(&mut dat);
         while !INTERRUPTED {
-            co.parse_event(screen::read_incoming(), &mut dat);
+            co.parse_event(screen::read_incoming(), &mut dat).unwrap();
         }
         co.thread_join();
     }

@@ -2,6 +2,7 @@ use crate::buffer;
 use crate::frame;
 use crate::panel;
 use crate::panel::PanelImpl;
+use crate::Result;
 use crate::UserData;
 
 #[derive(Debug)]
@@ -13,16 +14,22 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &UserData) -> Window {
+    pub fn new(
+        ylen: usize,
+        xlen: usize,
+        ypos: usize,
+        xpos: usize,
+        dat: &UserData,
+    ) -> Result<Window> {
         let mut w = Window {
-            frame: frame::Frame::new(ylen, xlen, ypos, xpos, dat),
-            panel: panel::Panel::new(ylen - 2, xlen - 2, ypos + 1, xpos + 1, dat),
-            buffer: buffer::Buffer::new(),
+            frame: frame::Frame::new(ylen, xlen, ypos, xpos, dat)?,
+            panel: panel::Panel::new(ylen - 2, xlen - 2, ypos + 1, xpos + 1, dat)?,
+            buffer: buffer::Buffer::new()?,
             offset: 0,
         };
-        w.frame.refresh();
-        w.panel.refresh();
-        w
+        w.frame.refresh()?;
+        w.panel.refresh()?;
+        Ok(w)
     }
 
     pub fn is_dead(&mut self) -> bool {
@@ -36,32 +43,34 @@ impl Window {
         ypos: usize,
         xpos: usize,
         dat: &mut UserData,
-    ) {
-        self.frame.resize(ylen, xlen, ypos, xpos, dat);
+    ) -> Result<()> {
+        self.frame.resize(ylen, xlen, ypos, xpos, dat)?;
         self.panel
-            .resize(ylen - 2, xlen - 2, ypos + 1, xpos + 1, dat);
+            .resize(ylen - 2, xlen - 2, ypos + 1, xpos + 1, dat)?;
         self.offset = 0;
+        Ok(())
     }
 
-    pub fn attach_buffer(&mut self, f: &str) -> std::io::Result<()> {
+    pub fn attach_buffer(&mut self, f: &str) -> Result<()> {
         assert!(self.buffer.get_path().as_str() == "");
         self.buffer.set_reader(f)?; // do this first
-        self.frame.set_title(f);
-        self.panel.set_title(f);
+        self.frame.set_title(f)?;
+        self.panel.set_title(f)?;
         log::info!("window={:?} path={}", self, self.buffer.get_path());
         Ok(())
     }
 
     // used by watch
     #[allow(dead_code)]
-    pub fn update_buffer(&mut self) {
-        self.buffer.update().unwrap();
+    pub fn update_buffer(&mut self) -> std::io::Result<()> {
+        self.buffer.update()?;
         log::info!("window={:?} path={}", self, self.buffer.get_path());
+        Ok(())
     }
 
-    pub fn focus(&mut self, t: bool) {
-        self.frame.set_focus(t);
-        self.panel.set_focus(t);
+    pub fn focus(&mut self, t: bool) -> Result<()> {
+        self.frame.set_focus(t)?;
+        self.panel.set_focus(t)
     }
 
     pub fn goto_head(&mut self) {
@@ -86,9 +95,15 @@ impl Window {
         }
     }
 
-    pub fn repaint(&mut self, showlnum: bool, foldline: bool, blinkline: bool, standout_attr: u32) {
+    pub fn repaint(
+        &mut self,
+        showlnum: bool,
+        foldline: bool,
+        blinkline: bool,
+        standout_attr: u32,
+    ) -> Result<()> {
         if self.is_dead() {
-            return;
+            return Ok(());
         }
 
         let mut pos = 0;
@@ -99,15 +114,15 @@ impl Window {
         let xlen = self.panel.get_xlen();
 
         self.buffer.block_till_ready();
-        self.panel.erase();
+        self.panel.erase()?;
 
         loop {
-            match self
+            if self
                 .buffer
                 .readline(&mut pos, &mut s, &mut standout, showlnum, blinkline)
+                .is_err()
             {
-                Ok(()) => (),
-                Err(_) => break,
+                break;
             }
             // C++ / Go version with fine grained lock checks ylen/xlen/offset mismatch here
 
@@ -118,7 +133,7 @@ impl Window {
             if !foldline && s.len() > xlen {
                 s = s.get(0..xlen).unwrap().to_string();
             }
-            self.panel.print(y, 0, standout, standout_attr, &s);
+            self.panel.print(y, 0, standout, standout_attr, &s)?;
             if !foldline {
                 y += 1;
             } else {
@@ -129,9 +144,10 @@ impl Window {
             }
         }
 
-        self.panel.refresh();
-        self.buffer.clear().unwrap();
+        self.panel.refresh()?;
+        self.buffer.clear()?;
         self.buffer.signal_blocked();
+        Ok(())
     }
 
     pub fn signal(&mut self) {

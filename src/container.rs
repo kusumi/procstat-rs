@@ -1,5 +1,6 @@
 use crate::util;
 use crate::window;
+use crate::Result;
 use crate::UserData;
 use crate::INTERRUPTED;
 
@@ -25,33 +26,32 @@ impl Drop for Container {
 */
 
 impl Container {
-    pub fn new(args: Vec<String>, dat: &mut UserData) -> Self {
+    pub fn new(args: Vec<String>, dat: &mut UserData) -> Result<Self> {
         let mut co = Container {
             v: Vec::new(),
             t: Vec::new(),
             i: 0,
         };
-        co.build_window(dat);
+        co.build_window(dat)?;
         for (i, f) in args.iter().enumerate() {
             if !util::is_regular_file(f) {
                 log::info!("No such regular file {}", f);
                 continue;
             }
             if i < co.v.len() {
-                match co.v[i].lock().unwrap().attach_buffer(f) {
-                    Ok(_) => (),
-                    Err(e) => log::info!("{}", e),
+                if let Err(e) = co.v[i].lock().unwrap().attach_buffer(f) {
+                    log::info!("{}", e);
                 }
             }
         }
-        co.v[co.i].lock().unwrap().focus(true);
-        co
+        co.v[co.i].lock().unwrap().focus(true)?;
+        Ok(co)
     }
 
-    fn goto_next_window(&mut self) {
+    fn goto_next_window(&mut self) -> Result<()> {
         let vlen = self.v.len();
         let begi = self.i;
-        self.v[begi].lock().unwrap().focus(false);
+        self.v[begi].lock().unwrap().focus(false)?;
         loop {
             let w = &mut self.v[self.i].lock().unwrap();
             self.i += 1;
@@ -62,13 +62,13 @@ impl Container {
                 break;
             }
         }
-        self.v[begi].lock().unwrap().focus(true);
+        self.v[begi].lock().unwrap().focus(true)
     }
 
-    fn goto_prev_window(&mut self) {
+    fn goto_prev_window(&mut self) -> Result<()> {
         let vlen = self.v.len();
         let begi = self.i;
-        self.v[begi].lock().unwrap().focus(false);
+        self.v[begi].lock().unwrap().focus(false)?;
         loop {
             let w = &mut self.v[self.i].lock().unwrap();
             self.i -= 1;
@@ -79,18 +79,18 @@ impl Container {
                 break;
             }
         }
-        self.v[begi].lock().unwrap().focus(true);
+        self.v[begi].lock().unwrap().focus(true)
     }
 
-    fn build_window(&mut self, dat: &mut UserData) {
+    fn build_window(&mut self, dat: &mut UserData) -> Result<()> {
         if !dat.opt.rotatecol {
-            self.build_window_xy(dat);
+            self.build_window_xy(dat)
         } else {
-            self.build_window_yx(dat);
+            self.build_window_yx(dat)
         }
     }
 
-    fn build_window_xy(&mut self, dat: &mut UserData) {
+    fn build_window_xy(&mut self, dat: &mut UserData) -> Result<()> {
         let mut seq = 0;
         let xx = dat.term.get_terminal_cols();
         let yy = dat.term.get_terminal_lines();
@@ -117,13 +117,14 @@ impl Container {
                 if j == y - 1 {
                     ylen += yr;
                 }
-                self.alloc_window(seq, ylen, xlen, ypos, xpos, dat);
+                self.alloc_window(seq, ylen, xlen, ypos, xpos, dat)?;
                 seq += 1;
             }
         }
+        Ok(())
     }
 
-    fn build_window_yx(&mut self, dat: &mut UserData) {
+    fn build_window_yx(&mut self, dat: &mut UserData) -> Result<()> {
         let mut seq = 0;
         let yy = dat.term.get_terminal_lines();
         let xx = dat.term.get_terminal_cols();
@@ -150,10 +151,11 @@ impl Container {
                 if j == x - 1 {
                     xlen += xr;
                 }
-                self.alloc_window(seq, ylen, xlen, ypos, xpos, dat);
+                self.alloc_window(seq, ylen, xlen, ypos, xpos, dat)?;
                 seq += 1;
             }
         }
+        Ok(())
     }
 
     fn alloc_window(
@@ -164,28 +166,29 @@ impl Container {
         ypos: usize,
         xpos: usize,
         dat: &mut UserData,
-    ) {
+    ) -> Result<()> {
         if let Some(p) = self.v.get_mut(seq) {
             let w = &mut p.lock().unwrap();
-            w.resize(ylen, xlen, ypos, xpos, dat);
+            w.resize(ylen, xlen, ypos, xpos, dat)?;
             w.signal();
         } else {
             self.v.push(std::sync::Arc::new(std::sync::Mutex::new(
-                window::Window::new(ylen, xlen, ypos, xpos, dat),
+                window::Window::new(ylen, xlen, ypos, xpos, dat)?,
             )));
         }
+        Ok(())
     }
 
     // XXX self.v[self.i].lock() blocks when window threads are alive, why ?
-    pub fn parse_event(&mut self, x: isize, dat: &mut UserData) {
+    pub fn parse_event(&mut self, x: isize, dat: &mut UserData) -> Result<()> {
         if x == screen::KBD_ERR {
         } else if x == screen::KBD_RESIZE || x == screen::kbd_ctrl('l' as isize) {
-            screen::clear_terminal().unwrap();
-            self.build_window(dat);
+            screen::clear_terminal()?;
+            self.build_window(dat)?;
         } else if x == 'h' as isize || x == screen::KBD_LEFT {
-            self.goto_prev_window();
+            self.goto_prev_window()?;
         } else if x == 'l' as isize || x == screen::KBD_RIGHT {
-            self.goto_next_window();
+            self.goto_next_window()?;
         } else if x == '0' as isize {
             let w = &mut self.v[self.i].lock().unwrap();
             w.goto_head();
@@ -222,6 +225,7 @@ impl Container {
             let w = &mut self.v[self.i].lock().unwrap();
             w.signal();
         }
+        Ok(())
     }
 
     // create window threads
@@ -248,13 +252,15 @@ impl Container {
                 }
                 if t != 0 {
                     let w = &mut cv.lock().unwrap();
-                    w.repaint(showlnum, foldline, blinkline, standout_attr);
+                    w.repaint(showlnum, foldline, blinkline, standout_attr)
+                        .unwrap();
                     w.timedwait(t);
                 }
                 unsafe {
                     while !INTERRUPTED {
                         let w = &mut cv.lock().unwrap();
-                        w.repaint(showlnum, foldline, blinkline, standout_attr);
+                        w.repaint(showlnum, foldline, blinkline, standout_attr)
+                            .unwrap();
                         w.timedwait(sinterval * 1000 + minterval);
                         // w is unlocked here once, correct ?
                     }
