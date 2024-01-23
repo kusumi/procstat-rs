@@ -1,8 +1,14 @@
 pub fn is_regular_file(f: &str) -> bool {
-    match std::fs::metadata(f) {
-        Ok(v) => v.file_type().is_file(),
-        Err(_) => false,
+    if let Ok(v) = std::fs::metadata(f) {
+        v.file_type().is_file()
+    } else {
+        false
     }
+}
+
+pub fn get_abspath(f: &str) -> std::io::Result<String> {
+    let p = std::fs::canonicalize(f)?; // XXX keep symlink unresolved
+    Ok(p.into_os_string().into_string().unwrap())
 }
 
 pub fn join_path(f1: &str, f2: &str) -> String {

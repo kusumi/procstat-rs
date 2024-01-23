@@ -3,7 +3,12 @@ use crate::frame;
 use crate::panel;
 use crate::panel::PanelImpl;
 use crate::Result;
-use crate::UserData;
+
+#[cfg(feature = "curses")]
+use crate::curses as screen;
+
+#[cfg(feature = "stdout")]
+use crate::stdout as screen;
 
 #[derive(Debug)]
 pub struct Window {
@@ -19,11 +24,11 @@ impl Window {
         xlen: usize,
         ypos: usize,
         xpos: usize,
-        dat: &UserData,
+        attr: &screen::Attr,
     ) -> Result<Window> {
         let mut w = Window {
-            frame: frame::Frame::new(ylen, xlen, ypos, xpos, dat)?,
-            panel: panel::Panel::new(ylen - 2, xlen - 2, ypos + 1, xpos + 1, dat)?,
+            frame: frame::Frame::new(ylen, xlen, ypos, xpos, attr)?,
+            panel: panel::Panel::new(ylen - 2, xlen - 2, ypos + 1, xpos + 1, attr)?,
             buffer: buffer::Buffer::new()?,
             offset: 0,
         };
@@ -42,35 +47,42 @@ impl Window {
         xlen: usize,
         ypos: usize,
         xpos: usize,
-        dat: &mut UserData,
+        attr: &mut screen::Attr,
     ) -> Result<()> {
-        self.frame.resize(ylen, xlen, ypos, xpos, dat)?;
+        self.frame.resize(ylen, xlen, ypos, xpos, attr)?;
         self.panel
-            .resize(ylen - 2, xlen - 2, ypos + 1, xpos + 1, dat)?;
+            .resize(ylen - 2, xlen - 2, ypos + 1, xpos + 1, attr)?;
         self.offset = 0;
         Ok(())
     }
 
     pub fn attach_buffer(&mut self, f: &str) -> Result<()> {
-        assert!(self.buffer.get_path().as_str() == "");
-        self.buffer.set_reader(f)?; // do this first
+        self.buffer.init(f)?; // still had no path set at this point
         self.frame.set_title(f)?;
         self.panel.set_title(f)?;
-        log::info!("window={:?} path={}", self, self.buffer.get_path());
+        log::info!(
+            "{}: {:?} {:?}",
+            stringify!(attach_buffer),
+            self.panel,
+            self.frame,
+        );
         Ok(())
     }
 
-    // used by watch
-    #[allow(dead_code)]
     pub fn update_buffer(&mut self) -> std::io::Result<()> {
         self.buffer.update()?;
-        log::info!("window={:?} path={}", self, self.buffer.get_path());
+        log::info!(
+            "{}: {:?} {:?}",
+            stringify!(update_buffer),
+            self.panel,
+            self.frame,
+        );
         Ok(())
     }
 
-    pub fn focus(&mut self, t: bool) -> Result<()> {
-        self.frame.set_focus(t)?;
-        self.panel.set_focus(t)
+    pub fn focus(&mut self, t: bool, standout_attr: u32) -> Result<()> {
+        self.frame.set_focus(t, standout_attr)?;
+        self.panel.set_focus(t, standout_attr)
     }
 
     pub fn goto_head(&mut self) {
@@ -131,7 +143,7 @@ impl Window {
             }
             // XXX expecting s to only contain ascii
             if !foldline && s.len() > xlen {
-                s = s.get(0..xlen).unwrap().to_string();
+                s = s.get(0..xlen).ok_or_else(|| xlen.to_string())?.to_string();
             }
             self.panel.print(y, 0, standout, standout_attr, &s)?;
             if !foldline {
@@ -148,14 +160,5 @@ impl Window {
         self.buffer.clear()?;
         self.buffer.signal_blocked();
         Ok(())
-    }
-
-    pub fn signal(&mut self) {
-        // XXX should be pthread_cond_signal equivalent
-    }
-
-    pub fn timedwait(&mut self, msec: u64) {
-        // XXX should be pthread_cond_timedwait equivalent
-        std::thread::sleep(std::time::Duration::from_millis(msec));
     }
 }

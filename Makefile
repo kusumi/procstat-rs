@@ -15,3 +15,6 @@ lint1:
 lint2:
 	cargo clippy --release --fix --features=stdout
 	git status
+
+xxx1:	fmt lint1
+xxx2:	fmt lint2

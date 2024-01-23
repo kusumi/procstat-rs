@@ -1,6 +1,5 @@
 use crate::util;
 use crate::Result;
-use crate::UserData;
 #[cfg(feature = "curses")]
 
 lazy_static! {
@@ -32,18 +31,34 @@ pub fn kbd_ctrl(x: isize) -> isize {
 }
 
 #[derive(Debug, Default)]
-pub struct Terminal {
+pub struct Attr {
     lines: usize,
     cols: usize,
+    color_attr: u32,
+    standout_attr: u32,
 }
 
-impl Terminal {
+impl Attr {
     pub fn get_terminal_lines(&self) -> usize {
         self.lines
     }
 
     pub fn get_terminal_cols(&self) -> usize {
         self.cols
+    }
+
+    pub fn get_color_attr(&self) -> u32 {
+        self.color_attr
+    }
+
+    pub fn get_standout_attr(&self) -> u32 {
+        self.standout_attr
+    }
+}
+
+pub fn newattr() -> Attr {
+    Attr {
+        ..Default::default()
     }
 }
 
@@ -62,13 +77,14 @@ impl Default for Screen {
     }
 }
 
-fn update_terminal_size(dat: &mut UserData) -> Result<()> {
+pub fn update_terminal_size(attr: &mut Attr) -> Result<()> {
     let _mtx = MTX.lock()?;
     let mut y = 0;
     let mut x = 0;
     ncurses::getmaxyx(ncurses::stdscr(), &mut y, &mut x);
-    dat.term.lines = y as usize;
-    dat.term.cols = x as usize;
+    attr.lines = y as usize;
+    attr.cols = x as usize;
+    log::info!("{}: {:?}", stringify!(update_terminal_size), attr);
     Ok(())
 }
 
@@ -86,32 +102,34 @@ pub fn string_to_color(arg: &str) -> i16 {
     }
 }
 
-pub fn init_screen(dat: &mut UserData) -> Result<()> {
+pub fn init_screen(fgcolor: i16, bgcolor: i16) -> Result<Attr> {
     ncurses::initscr();
     ncurses::keypad(ncurses::stdscr(), true);
     ncurses::noecho();
     ncurses::cbreak();
-    ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE).ok_or(util::error())?;
+    ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE).ok_or_else(util::error)?;
     ncurses::wtimeout(ncurses::stdscr(), 500);
     clear_terminal()?;
-    update_terminal_size(dat)?;
+
+    let mut attr = newattr();
+    update_terminal_size(&mut attr)?;
 
     if ncurses::has_colors() {
         ncurses::start_color();
         ncurses::use_default_colors();
-        ncurses::init_pair(1, dat.opt.fgcolor, dat.opt.bgcolor);
-        dat.color_attr = ncurses::COLOR_PAIR(1);
+        ncurses::init_pair(1, fgcolor, bgcolor);
+        attr.color_attr = ncurses::COLOR_PAIR(1);
     }
 
-    dat.standout_attr = match std::env::var("TERM") {
+    attr.standout_attr = match std::env::var("TERM") {
         Ok(v) if v == "screen" => ncurses::A_REVERSE(),
         _ => ncurses::A_STANDOUT(),
     };
-    Ok(())
+    Ok(attr)
 }
 
 pub fn cleanup_screen() -> Result<()> {
-    ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_VISIBLE).ok_or(util::error())?;
+    ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_VISIBLE).ok_or_else(util::error)?;
     ncurses::endwin();
     Ok(())
 }
@@ -127,8 +145,6 @@ pub fn clear_terminal() -> Result<()> {
     Ok(())
 }
 
-// used by watch
-#[allow(dead_code)]
 pub fn flash_terminal() -> Result<()> {
     ncurses::flash();
     Ok(())
@@ -167,8 +183,7 @@ impl Screen {
         let _mtx = MTX.lock()?;
         let attr = if standout {
             if standout_attr == 0 {
-                // XXX used by Frame::print_title
-                ncurses::A_STANDOUT()
+                ncurses::A_NORMAL()
             } else {
                 standout_attr
             }
@@ -193,10 +208,9 @@ impl Screen {
         Ok(())
     }
 
-    pub fn resize(&mut self, ylen: usize, xlen: usize, dat: &mut UserData) -> Result<()> {
+    pub fn resize(&mut self, ylen: usize, xlen: usize) -> Result<()> {
         let _mtx = MTX.lock()?;
         ncurses::wresize(self.win, ylen as i32, xlen as i32);
-        update_terminal_size(dat)?;
         Ok(())
     }
 
@@ -222,10 +236,10 @@ impl Screen {
         Ok(())
     }
 
-    pub fn bkgd(&mut self, dat: &UserData) -> Result<()> {
+    pub fn bkgd(&mut self, color_attr: u32) -> Result<()> {
         let _mtx = MTX.lock()?;
-        if dat.color_attr != ncurses::A_NORMAL() {
-            ncurses::wbkgd(self.win, dat.color_attr | ' ' as u32);
+        if color_attr != ncurses::A_NORMAL() {
+            ncurses::wbkgd(self.win, color_attr | ' ' as u32);
         }
         Ok(())
     }

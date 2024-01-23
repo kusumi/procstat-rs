@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::UserData;
 
 #[cfg(feature = "curses")]
 use crate::curses as screen;
@@ -17,7 +16,7 @@ pub struct Panel {
 }
 
 pub trait PanelImpl {
-    fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &UserData) -> Result<Self>
+    fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, attr: &screen::Attr) -> Result<Self>
     where
         Self: Sized;
     fn get_ylen(&self) -> usize;
@@ -27,7 +26,7 @@ pub trait PanelImpl {
     fn set_title(&mut self, _s: &str) -> Result<()> {
         Ok(())
     }
-    fn set_focus(&mut self, _t: bool) -> Result<()> {
+    fn set_focus(&mut self, _t: bool, _standout_attr: u32) -> Result<()> {
         Ok(())
     }
     fn refresh(&mut self) -> Result<()>;
@@ -38,7 +37,7 @@ pub trait PanelImpl {
         xlen: usize,
         ypos: usize,
         xpos: usize,
-        dat: &mut UserData,
+        attr: &mut screen::Attr,
     ) -> Result<()>;
     fn print(&self, y: usize, x: usize, standout: bool, standout_attr: u32, s: &str) -> Result<()>;
 }
@@ -50,17 +49,20 @@ impl Drop for Panel {
 }
 
 impl PanelImpl for Panel {
-    fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &UserData) -> Result<Self>
-    where
-        Self: Sized,
-    {
+    fn new(
+        ylen: usize,
+        xlen: usize,
+        ypos: usize,
+        xpos: usize,
+        attr: &screen::Attr,
+    ) -> Result<Self> {
         let scr = screen::alloc_screen(ylen, xlen, ypos, xpos)?;
         let mut panel = Panel {
             scr,
             ..Default::default()
         };
         panel.update_size(ylen, xlen, ypos, xpos);
-        panel.scr.bkgd(dat)?;
+        panel.scr.bkgd(attr.get_color_attr())?;
         Ok(panel)
     }
 
@@ -94,9 +96,9 @@ impl PanelImpl for Panel {
         xlen: usize,
         ypos: usize,
         xpos: usize,
-        dat: &mut UserData,
+        _attr: &mut screen::Attr,
     ) -> Result<()> {
-        self.scr.resize(self.ylen, self.xlen, dat)?;
+        self.scr.resize(self.ylen, self.xlen)?;
         self.scr.r#move(self.ypos, self.xpos)?;
         self.update_size(ylen, xlen, ypos, xpos);
         self.refresh()

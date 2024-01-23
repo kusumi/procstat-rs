@@ -1,4 +1,4 @@
-procstat-rs ([v0.1.2](https://github.com/kusumi/procstat-rs/releases/tag/v0.1.2))
+procstat-rs ([v0.1.3](https://github.com/kusumi/procstat-rs/releases/tag/v0.1.3))
 ========
 
 ## About
@@ -7,8 +7,6 @@ procstat-rs ([v0.1.2](https://github.com/kusumi/procstat-rs/releases/tag/v0.1.2)
 
 + Rust version of [https://github.com/kusumi/procstat-go](https://github.com/kusumi/procstat-go).
 
-![procstat](https://a.fsdn.com/con/app/proj/procfsv/screenshots/318601.jpg/max/max/1)
-
 ## Requirements
 
 Recent version of Rust
@@ -16,10 +14,6 @@ Recent version of Rust
 ## Build
 
     $ make
-
-or
-
-    $ gmake
 
 ## Usage
 
@@ -47,15 +41,16 @@ or
             --debug         Enable debug log
         -v, --version       Print version and exit
         -h, --help          print this help menu
-
-## Bug
-
-+ A watcher thread is unimplemented in this Rust version.
-
-+ Commands are currently unsupported. This is actually a bug, see XXX comment in src/container.rs.
-
-## Resource
-
-+ Upstream [https://sourceforge.net/projects/procfsv](https://sourceforge.net/projects/procfsv)
-
-+ Repository [https://github.com/kusumi/procstat-rs](https://github.com/kusumi/procstat-rs)
+    
+    Commands:
+      0 - Set current position to the first line of the buffer
+      $ - Set current position to the last line of the buffer
+      k|UP - Scroll upward
+      j|DOWN - Scroll downward
+      h|LEFT - Select next window
+      l|RIGHT - Select previous window
+      CTRL-b - Scroll one page upward
+      CTRL-u - Scroll half page upward
+      CTRL-f - Scroll one page downward
+      CTRL-d - Scroll half page downward
+      CTRL-l - Repaint whole screen

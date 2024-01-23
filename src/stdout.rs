@@ -1,6 +1,5 @@
 use crate::util;
 use crate::Result;
-use crate::UserData;
 #[cfg(feature = "stdout")]
 use std::io::Write;
 
@@ -20,12 +19,12 @@ pub fn kbd_ctrl(x: isize) -> isize {
 }
 
 #[derive(Debug, Default)]
-pub struct Terminal {
+pub struct Attr {
     lines: usize,
     cols: usize,
 }
 
-impl Terminal {
+impl Attr {
     pub fn get_terminal_lines(&self) -> usize {
         assert!(self.lines != 0);
         self.lines
@@ -35,22 +34,31 @@ impl Terminal {
         assert!(self.cols != 0);
         self.cols
     }
+
+    pub fn get_color_attr(&self) -> u32 {
+        0
+    }
+
+    pub fn get_standout_attr(&self) -> u32 {
+        0
+    }
+}
+
+pub fn newattr() -> Attr {
+    Attr {
+        ..Default::default()
+    }
 }
 
 #[derive(Debug, Default)]
-#[allow(dead_code)]
-pub struct Screen {
-    ylen: usize,
-    xlen: usize,
-    ypos: usize,
-    xpos: usize,
-}
+pub struct Screen {}
 
-fn update_terminal_size(dat: &mut UserData) -> Result<()> {
+pub fn update_terminal_size(attr: &mut Attr) -> Result<()> {
     let _mtx = MTX.lock()?;
     if let Some((w, h)) = term_size::dimensions() {
-        dat.term.lines = h;
-        dat.term.cols = w;
+        attr.lines = h;
+        attr.cols = w;
+        log::info!("{}: {:?}", stringify!(update_terminal_size), attr);
         Ok(())
     } else {
         Err(Box::new(util::error()))
@@ -61,8 +69,10 @@ pub fn string_to_color(_arg: &str) -> i16 {
     -1
 }
 
-pub fn init_screen(dat: &mut UserData) -> Result<()> {
-    update_terminal_size(dat)
+pub fn init_screen(_fgcolor: i16, _bgcolor: i16) -> Result<Attr> {
+    let mut attr = newattr();
+    update_terminal_size(&mut attr)?;
+    Ok(attr)
 }
 
 pub fn cleanup_screen() -> Result<()> {
@@ -78,8 +88,6 @@ pub fn clear_terminal() -> Result<()> {
     Ok(())
 }
 
-// used by watch
-#[allow(dead_code)]
 pub fn flash_terminal() -> Result<()> {
     Ok(())
 }
@@ -92,13 +100,8 @@ pub fn alloc_screen(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Resul
 }
 
 impl Screen {
-    pub fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Self {
-        Self {
-            ylen,
-            xlen,
-            ypos,
-            xpos,
-        }
+    pub fn new(_ylen: usize, _xlen: usize, _ypos: usize, _xpos: usize) -> Self {
+        Self {}
     }
 
     pub fn delete(&mut self) -> Result<()> {
@@ -112,11 +115,14 @@ impl Screen {
         y: usize,
         x: usize,
         standout: bool,
-        _standout_attr: u32,
+        standout_attr: u32,
         s: &str,
     ) -> Result<()> {
         let _mtx = MTX.lock()?;
-        println!("Print {:?}: {} {} {} \"{}\"", self, y, x, standout, s);
+        println!(
+            "Print {:?}: {} {} {} {} \"{}\"",
+            self, y, x, standout, standout_attr, s
+        );
         Ok(())
     }
 
@@ -130,8 +136,8 @@ impl Screen {
         Ok(())
     }
 
-    pub fn resize(&mut self, _ylen: usize, _xlen: usize, dat: &mut UserData) -> Result<()> {
-        update_terminal_size(dat)
+    pub fn resize(&mut self, _ylen: usize, _xlen: usize) -> Result<()> {
+        Ok(())
     }
 
     pub fn r#move(&mut self, _ypos: usize, _xpos: usize) -> Result<()> {
@@ -142,7 +148,7 @@ impl Screen {
         Ok(())
     }
 
-    pub fn bkgd(&mut self, _dat: &UserData) -> Result<()> {
+    pub fn bkgd(&mut self, _color_attr: u32) -> Result<()> {
         Ok(())
     }
 }

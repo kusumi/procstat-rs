@@ -7,7 +7,6 @@ use std::io::Seek;
 pub struct Buffer {
     chunk: Vec<String>,
     reader: Option<std::io::BufReader<std::fs::File>>,
-    path: String,
     curline: usize,
     maxline: usize,
 }
@@ -17,7 +16,6 @@ impl Buffer {
         let mut buffer = Buffer {
             chunk: Vec::new(),
             reader: None,
-            path: "".to_string(),
             curline: 0,
             maxline: 0,
         };
@@ -26,15 +24,12 @@ impl Buffer {
         Ok(buffer)
     }
 
-    pub fn set_reader(&mut self, f: &str) -> std::io::Result<()> {
+    pub fn init(&mut self, f: &str) -> std::io::Result<()> {
+        assert!(self.reader.is_none());
         let fp = std::fs::File::open(f)?;
         self.reader = Some(std::io::BufReader::new(fp));
-        self.path = f.to_string();
+        self.update()?;
         Ok(())
-    }
-
-    pub fn get_path(&self) -> String {
-        self.path.clone()
     }
 
     pub fn get_max_line(&mut self) -> usize {
@@ -46,7 +41,7 @@ impl Buffer {
 
     pub fn is_dead(&mut self) -> bool {
         self.block_till_ready();
-        let ret = matches!(self.reader, None);
+        let ret = self.reader.is_none();
         self.signal_blocked();
         ret
     }
@@ -56,7 +51,7 @@ impl Buffer {
             return Ok(());
         }
         self.block_till_ready();
-        let r = self.reader.as_mut().ok_or(util::error())?;
+        let r = self.reader.as_mut().ok_or_else(util::error)?;
         let tmp = r.stream_position()?;
         r.seek(std::io::SeekFrom::Start(0))?; // affects BufRead::lines
         self.maxline = 0;
@@ -77,7 +72,7 @@ impl Buffer {
         blinkline: bool,
     ) -> std::io::Result<()> {
         s.clear();
-        if self.reader.as_mut().ok_or(util::error())?.read_line(s)? == 0 || s.is_empty() {
+        if self.reader.as_mut().ok_or_else(util::error)?.read_line(s)? == 0 || s.is_empty() {
             return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
         }
 
@@ -105,7 +100,6 @@ impl Buffer {
         if showlnum {
             *s = format!("{} {}", self.curline, s);
         }
-
         Ok(())
     }
 
@@ -113,17 +107,17 @@ impl Buffer {
     pub fn clear(&mut self) -> std::io::Result<()> {
         self.reader
             .as_mut()
-            .ok_or(util::error())?
+            .ok_or_else(util::error)?
             .seek(std::io::SeekFrom::Start(0))?;
         self.curline = 0;
         Ok(())
     }
 
     pub fn block_till_ready(&mut self) {
-        // NOP unless fine grained window locking
+        // NOP unless fine grained locking
     }
 
     pub fn signal_blocked(&mut self) {
-        // NOP unless fine grained window locking
+        // NOP unless fine grained locking
     }
 }

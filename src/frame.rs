@@ -1,7 +1,6 @@
 use crate::panel;
 use crate::panel::PanelImpl;
 use crate::Result;
-use crate::UserData;
 
 #[cfg(feature = "curses")]
 use crate::curses as screen;
@@ -12,12 +11,12 @@ use crate::stdout as screen;
 #[derive(Debug, Default)]
 pub struct Frame {
     scr: screen::Screen,
-    title: String,
-    focus: bool,
     ylen: usize,
     xlen: usize,
     ypos: usize,
     xpos: usize,
+    title: String,
+    focus: bool,
 }
 
 impl Drop for Frame {
@@ -27,10 +26,13 @@ impl Drop for Frame {
 }
 
 impl panel::PanelImpl for Frame {
-    fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, dat: &UserData) -> Result<Self>
-    where
-        Self: Sized,
-    {
+    fn new(
+        ylen: usize,
+        xlen: usize,
+        ypos: usize,
+        xpos: usize,
+        attr: &screen::Attr,
+    ) -> Result<Self> {
         let scr = screen::alloc_screen(ylen, xlen, ypos, xpos)?;
         let mut frame = Frame {
             scr,
@@ -39,7 +41,7 @@ impl panel::PanelImpl for Frame {
             ..Default::default()
         };
         frame.update_size(ylen, xlen, ypos, xpos);
-        frame.scr.bkgd(dat)?;
+        frame.scr.bkgd(attr.get_color_attr())?;
         frame.scr.r#box()?;
         Ok(frame)
     }
@@ -62,12 +64,12 @@ impl panel::PanelImpl for Frame {
 
     fn set_title(&mut self, s: &str) -> Result<()> {
         self.title = s.to_string();
-        self.print_title()
+        self.print_title(0)
     }
 
-    fn set_focus(&mut self, t: bool) -> Result<()> {
+    fn set_focus(&mut self, t: bool, standout_attr: u32) -> Result<()> {
         self.focus = t;
-        self.print_title()
+        self.print_title(standout_attr)
     }
 
     fn refresh(&mut self) -> Result<()> {
@@ -84,13 +86,13 @@ impl panel::PanelImpl for Frame {
         xlen: usize,
         ypos: usize,
         xpos: usize,
-        dat: &mut UserData,
+        attr: &mut screen::Attr,
     ) -> Result<()> {
-        self.scr.resize(self.ylen, self.xlen, dat)?;
+        self.scr.resize(self.ylen, self.xlen)?;
         self.scr.r#move(self.ypos, self.xpos)?;
         self.scr.r#box()?;
         self.update_size(ylen, xlen, ypos, xpos);
-        self.print_title()
+        self.print_title(attr.get_standout_attr())
     }
 
     fn print(&self, y: usize, x: usize, standout: bool, standout_attr: u32, s: &str) -> Result<()> {
@@ -106,8 +108,8 @@ impl Frame {
         self.xpos = xpos;
     }
 
-    fn print_title(&mut self) -> Result<()> {
-        self.print(0, 1, self.focus, 0, &self.title)?;
+    fn print_title(&mut self, standout_attr: u32) -> Result<()> {
+        self.print(0, 1, self.focus, standout_attr, &self.title)?;
         self.refresh()
     }
 }

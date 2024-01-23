@@ -8,7 +8,7 @@ mod panel;
 mod util;
 mod window;
 
-const VERSION: [i32; 3] = [0, 1, 2];
+const VERSION: [i32; 3] = [0, 1, 3];
 
 #[cfg(feature = "curses")]
 mod curses;
@@ -25,7 +25,7 @@ use stdout as screen;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Debug)]
-struct UserOption {
+struct Opt {
     layout: Vec<usize>,
     sinterval: u64,
     minterval: u64,
@@ -39,7 +39,7 @@ struct UserOption {
     debug: bool,
 }
 
-impl Default for UserOption {
+impl Default for Opt {
     fn default() -> Self {
         Self {
             layout: Vec::new(),
@@ -57,15 +57,6 @@ impl Default for UserOption {
     }
 }
 
-#[derive(Debug, Default)]
-#[allow(dead_code)]
-pub struct UserData {
-    opt: UserOption,
-    term: screen::Terminal,
-    color_attr: u32,
-    standout_attr: u32,
-}
-
 fn get_version_string() -> String {
     format!("{}.{}.{}", VERSION[0], VERSION[1], VERSION[2])
 }
@@ -75,8 +66,24 @@ fn print_version() {
 }
 
 fn usage(progname: &str, opts: getopts::Options) {
-    let brief = format!("usage: {} [<options>] <paths>", progname);
-    print!("{}", opts.usage(&brief));
+    println!(
+        "{}",
+        opts.usage(&format!("usage: {} [<options>] <paths>", progname))
+    );
+    println!(
+        "Commands:
+  0 - Set current position to the first line of the buffer
+  $ - Set current position to the last line of the buffer
+  k|UP - Scroll upward
+  j|DOWN - Scroll downward
+  h|LEFT - Select next window
+  l|RIGHT - Select previous window
+  CTRL-b - Scroll one page upward
+  CTRL-u - Scroll half page upward
+  CTRL-f - Scroll one page downward
+  CTRL-d - Scroll half page downward
+  CTRL-l - Repaint whole screen"
+    );
 }
 
 fn init_log(f: &str) -> Result<()> {
@@ -96,6 +103,10 @@ extern "C" fn sigint_handler(_: libc::c_int) {
     unsafe {
         INTERRUPTED = true;
     }
+}
+
+pub fn is_interrupted() -> bool {
+    unsafe { INTERRUPTED }
 }
 
 extern "C" fn atexit_handler() {
@@ -165,36 +176,36 @@ fn main() {
         std::process::exit(1);
     }
 
-    let mut dat = UserData {
+    let mut opt = Opt {
         ..Default::default()
     };
     let mut layout = match matches.opt_str("c") {
         Some(v) => v.to_lowercase(),
         None => "".to_string(),
     };
-    dat.opt.fgcolor = match matches.opt_str("fg") {
+    opt.fgcolor = match matches.opt_str("fg") {
         Some(v) => screen::string_to_color(&v),
         None => -1,
     };
-    dat.opt.bgcolor = match matches.opt_str("bg") {
+    opt.bgcolor = match matches.opt_str("bg") {
         Some(v) => screen::string_to_color(&v),
         None => -1,
     };
-    dat.opt.sinterval = match matches.opt_str("t") {
+    opt.sinterval = match matches.opt_str("t") {
         Some(v) => v.parse::<u64>().unwrap(),
         None => 1,
     };
     if matches.opt_present("m") {
-        let x = dat.opt.sinterval;
-        dat.opt.sinterval = x / 1000;
-        dat.opt.minterval = x % 1000;
+        let x = opt.sinterval;
+        opt.sinterval = x / 1000;
+        opt.minterval = x % 1000;
     }
-    dat.opt.showlnum = matches.opt_present("n");
-    dat.opt.foldline = matches.opt_present("f");
-    dat.opt.blinkline = !matches.opt_present("noblink");
-    dat.opt.rotatecol = matches.opt_present("r");
-    dat.opt.usedelay = matches.opt_present("usedelay");
-    dat.opt.debug = matches.opt_present("debug");
+    opt.showlnum = matches.opt_present("n");
+    opt.foldline = matches.opt_present("f");
+    opt.blinkline = !matches.opt_present("noblink");
+    opt.rotatecol = matches.opt_present("r");
+    opt.usedelay = matches.opt_present("usedelay");
+    opt.debug = matches.opt_present("debug");
 
     if matches.free.is_empty() {
         usage(&progname, opts);
@@ -208,41 +219,49 @@ fn main() {
     }
     for x in layout.chars() {
         if ('1'..='9').contains(&x) {
-            dat.opt.layout.push(x as usize - '0' as usize);
+            opt.layout.push(x as usize - '0' as usize);
         } else if ('a'..='f').contains(&x) {
-            dat.opt.layout.push(x as usize - 'a' as usize + 10);
+            opt.layout.push(x as usize - 'a' as usize + 10);
         } else {
-            dat.opt.layout.push(0);
+            opt.layout.push(0);
         }
     }
 
-    if dat.opt.debug {
+    if opt.debug {
         let f = util::join_path(&util::get_home_path(), ".procstat.log");
         init_log(&f).unwrap();
     }
 
-    if let Err(e) = screen::init_screen(&mut dat) {
-        panic!("{}", e);
-    } else if dat.opt.debug {
-        log::info!("{:?}", dat.term);
-    }
-
-    if dat.opt.debug {
-        log::info!("{:?}", dat);
-    }
+    let attr = screen::init_screen(opt.fgcolor, opt.bgcolor).unwrap();
+    log::info!("{}: {:?}", stringify!(main), attr);
 
     unsafe {
         libc::atexit(atexit_handler);
         libc::signal(libc::SIGINT, sigint_handler as usize);
     }
 
-    let mut co = container::Container::new(args, &mut dat).unwrap();
-    unsafe {
-        co.thread_create(&mut dat);
-        while !INTERRUPTED {
-            co.parse_event(screen::read_incoming(), &mut dat).unwrap();
+    let pair = std::sync::Arc::new((
+        std::sync::Mutex::new(container::Container::new(args, attr, &opt).unwrap()),
+        std::sync::Condvar::new(),
+    ));
+    let mut thrv = container::thread_create(&pair, &opt);
+    loop {
+        // XXX Do something outside of mco.lock(), otherwise this loop never
+        // releases the mutex, and as a result window threads get blocked.
+        let x = screen::read_incoming();
+        let (mco, cv) = &*pair;
+        let mut co = mco.lock().unwrap();
+        co.parse_event(x, cv, &opt).unwrap();
+        if is_interrupted() {
+            co.set_interrupted();
+            break;
         }
-        co.thread_join();
     }
-    log::info!("{}: exit", stringify!(main));
+    container::thread_join(&mut thrv);
+
+    log::info!(
+        "{}: {:?} exit",
+        stringify!(main),
+        std::thread::current().id()
+    );
 }

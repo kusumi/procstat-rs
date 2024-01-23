@@ -1,8 +1,7 @@
 use crate::util;
 use crate::window;
+use crate::Opt;
 use crate::Result;
-use crate::UserData;
-use crate::INTERRUPTED;
 
 #[cfg(feature = "curses")]
 use crate::curses as screen;
@@ -10,91 +9,117 @@ use crate::curses as screen;
 #[cfg(feature = "stdout")]
 use crate::stdout as screen;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Container {
-    v: Vec<std::sync::Arc<std::sync::Mutex<window::Window>>>,
-    t: Vec<std::thread::JoinHandle<()>>,
-    i: usize,
+    v: Vec<window::Window>,
+    biv: Vec<usize>,
+    wih: std::collections::HashMap<i32, usize>,
+    ci: usize,
+    attr: screen::Attr,
+    inotify: inotify::Inotify,
+    is_interrupted: bool,
 }
 
-/*
-impl Drop for Container {
-    fn drop(&mut self) {
-        // delete_watch();
+impl Default for Container {
+    fn default() -> Self {
+        Self {
+            v: Vec::new(),
+            biv: Vec::new(),
+            wih: std::collections::HashMap::new(),
+            ci: 0,
+            attr: screen::newattr(),
+            inotify: inotify::Inotify::init().unwrap(),
+            is_interrupted: false,
+        }
     }
 }
-*/
 
 impl Container {
-    pub fn new(args: Vec<String>, dat: &mut UserData) -> Result<Self> {
+    pub fn new(args: Vec<String>, attr: screen::Attr, opt: &Opt) -> Result<Self> {
         let mut co = Container {
-            v: Vec::new(),
-            t: Vec::new(),
-            i: 0,
+            attr,
+            ..Default::default()
         };
-        co.build_window(dat)?;
-        for (i, f) in args.iter().enumerate() {
-            if !util::is_regular_file(f) {
-                log::info!("No such regular file {}", f);
-                continue;
-            }
-            if i < co.v.len() {
-                if let Err(e) = co.v[i].lock().unwrap().attach_buffer(f) {
-                    log::info!("{}", e);
-                }
-            }
-        }
-        co.v[co.i].lock().unwrap().focus(true)?;
+        co.init(args, opt)?;
         Ok(co)
     }
 
-    fn goto_next_window(&mut self) -> Result<()> {
-        let vlen = self.v.len();
-        let begi = self.i;
-        self.v[begi].lock().unwrap().focus(false)?;
-        loop {
-            let w = &mut self.v[self.i].lock().unwrap();
-            self.i += 1;
-            if self.i == vlen {
-                self.i = 0;
+    fn init(&mut self, args: Vec<String>, opt: &Opt) -> Result<()> {
+        self.build_window(opt)?;
+        for (i, f) in args.iter().enumerate() {
+            if !util::is_regular_file(f) {
+                log::info!("{}: No such regular file {}", stringify!(init), f);
+                continue;
             }
-            if !w.is_dead() || self.i == begi {
-                break;
+            if i < self.v.len() {
+                if let Err(e) = self.v[i].attach_buffer(f) {
+                    log::info!("{}: {}", stringify!(init), e);
+                    break;
+                }
+                self.biv.push(i);
+                let wd = self
+                    .inotify
+                    .watches()
+                    .add(util::get_abspath(f)?, inotify::WatchMask::MODIFY)?;
+                self.wih.insert(wd.get_watch_descriptor_id(), i);
             }
         }
-        self.v[begi].lock().unwrap().focus(true)
+        self.v[self.ci].focus(true, self.attr.get_standout_attr())
+    }
+
+    fn goto_next_window(&mut self) -> Result<()> {
+        let a = self.attr.get_standout_attr();
+        self.v[self.ci].focus(false, 0)?;
+        for (i, &idx) in self.biv.iter().enumerate() {
+            if idx == self.ci {
+                if idx == self.biv[self.biv.len() - 1] {
+                    self.ci = self.biv[0];
+                } else {
+                    self.ci = self.biv[i + 1];
+                }
+                return self.v[self.ci].focus(true, a);
+            }
+        }
+        if !self.biv.is_empty() {
+            self.ci = self.biv[0];
+            return self.v[self.ci].focus(true, a);
+        }
+        Ok(())
     }
 
     fn goto_prev_window(&mut self) -> Result<()> {
-        let vlen = self.v.len();
-        let begi = self.i;
-        self.v[begi].lock().unwrap().focus(false)?;
-        loop {
-            let w = &mut self.v[self.i].lock().unwrap();
-            self.i -= 1;
-            if self.i == 0 {
-                self.i = vlen - 1;
-            }
-            if !w.is_dead() || self.i == begi {
-                break;
+        let a = self.attr.get_standout_attr();
+        self.v[self.ci].focus(false, 0)?;
+        for (i, &idx) in self.biv.iter().enumerate() {
+            if idx == self.ci {
+                if idx == self.biv[0] {
+                    self.ci = self.biv[self.biv.len() - 1];
+                } else {
+                    self.ci = self.biv[i - 1];
+                }
+                return self.v[self.ci].focus(true, a);
             }
         }
-        self.v[begi].lock().unwrap().focus(true)
+        if !self.biv.is_empty() {
+            self.ci = self.biv[self.biv.len() - 1];
+            return self.v[self.ci].focus(true, a);
+        }
+        Ok(())
     }
 
-    fn build_window(&mut self, dat: &mut UserData) -> Result<()> {
-        if !dat.opt.rotatecol {
-            self.build_window_xy(dat)
+    fn build_window(&mut self, opt: &Opt) -> Result<()> {
+        if !opt.rotatecol {
+            self.build_window_xy(opt)
         } else {
-            self.build_window_yx(dat)
+            self.build_window_yx(opt)
         }
     }
 
-    fn build_window_xy(&mut self, dat: &mut UserData) -> Result<()> {
+    fn build_window_xy(&mut self, opt: &Opt) -> Result<()> {
         let mut seq = 0;
-        let xx = dat.term.get_terminal_cols();
-        let yy = dat.term.get_terminal_lines();
-        let x = dat.opt.layout.len();
+        let xx = self.attr.get_terminal_cols();
+        let yy = self.attr.get_terminal_lines();
+        let x = opt.layout.len();
         let xq = xx / x;
         let xr = xx % x;
 
@@ -104,7 +129,7 @@ impl Container {
             if i == x - 1 {
                 xlen += xr;
             }
-            let mut y = dat.opt.layout[i];
+            let mut y = opt.layout[i];
             if y == 0 {
                 y = 1; // ignore invalid
             }
@@ -117,18 +142,18 @@ impl Container {
                 if j == y - 1 {
                     ylen += yr;
                 }
-                self.alloc_window(seq, ylen, xlen, ypos, xpos, dat)?;
+                self.alloc_window(seq, ylen, xlen, ypos, xpos)?;
                 seq += 1;
             }
         }
         Ok(())
     }
 
-    fn build_window_yx(&mut self, dat: &mut UserData) -> Result<()> {
+    fn build_window_yx(&mut self, opt: &Opt) -> Result<()> {
         let mut seq = 0;
-        let yy = dat.term.get_terminal_lines();
-        let xx = dat.term.get_terminal_cols();
-        let y = dat.opt.layout.len();
+        let yy = self.attr.get_terminal_lines();
+        let xx = self.attr.get_terminal_cols();
+        let y = opt.layout.len();
         let yq = yy / y;
         let yr = yy % y;
 
@@ -138,7 +163,7 @@ impl Container {
             if i == y - 1 {
                 ylen += yr;
             }
-            let mut x = dat.opt.layout[i];
+            let mut x = opt.layout[i];
             if x == 0 {
                 x = 1; // ignore invalid
             }
@@ -151,7 +176,7 @@ impl Container {
                 if j == x - 1 {
                     xlen += xr;
                 }
-                self.alloc_window(seq, ylen, xlen, ypos, xpos, dat)?;
+                self.alloc_window(seq, ylen, xlen, ypos, xpos)?;
                 seq += 1;
             }
         }
@@ -165,118 +190,205 @@ impl Container {
         xlen: usize,
         ypos: usize,
         xpos: usize,
-        dat: &mut UserData,
     ) -> Result<()> {
-        if let Some(p) = self.v.get_mut(seq) {
-            let w = &mut p.lock().unwrap();
-            w.resize(ylen, xlen, ypos, xpos, dat)?;
-            w.signal();
+        if self.v.get(seq).is_some() {
+            self.v[seq].resize(ylen, xlen, ypos, xpos, &mut self.attr)?;
+            //self.v[seq].signal(); // XXX
         } else {
-            self.v.push(std::sync::Arc::new(std::sync::Mutex::new(
-                window::Window::new(ylen, xlen, ypos, xpos, dat)?,
-            )));
+            self.v
+                .push(window::Window::new(ylen, xlen, ypos, xpos, &self.attr)?);
         }
+        log::info!(
+            "{}: seq {}, len({}, {}), pos({}, {})",
+            stringify!(alloc_window),
+            seq,
+            ylen,
+            xlen,
+            ypos,
+            xpos
+        );
         Ok(())
     }
 
-    // XXX self.v[self.i].lock() blocks when window threads are alive, why ?
-    pub fn parse_event(&mut self, x: isize, dat: &mut UserData) -> Result<()> {
+    pub fn parse_event(&mut self, x: isize, cv: &std::sync::Condvar, opt: &Opt) -> Result<()> {
         if x == screen::KBD_ERR {
         } else if x == screen::KBD_RESIZE || x == screen::kbd_ctrl('l' as isize) {
+            screen::update_terminal_size(&mut self.attr)?;
             screen::clear_terminal()?;
-            self.build_window(dat)?;
+            self.build_window(opt)?;
         } else if x == 'h' as isize || x == screen::KBD_LEFT {
             self.goto_prev_window()?;
         } else if x == 'l' as isize || x == screen::KBD_RIGHT {
             self.goto_next_window()?;
         } else if x == '0' as isize {
-            let w = &mut self.v[self.i].lock().unwrap();
+            let w = &mut self.v[self.ci];
             w.goto_head();
-            w.signal();
+            cv.notify_all();
         } else if x == '$' as isize {
-            let w = &mut self.v[self.i].lock().unwrap();
+            let w = &mut self.v[self.ci];
             w.goto_tail();
-            w.signal();
+            cv.notify_all();
         } else if x == 'k' as isize || x == screen::KBD_UP {
-            let w = &mut self.v[self.i].lock().unwrap();
+            let w = &mut self.v[self.ci];
             w.goto_current(-1);
-            w.signal();
+            cv.notify_all();
         } else if x == 'j' as isize || x == screen::KBD_DOWN {
-            let w = &mut self.v[self.i].lock().unwrap();
+            let w = &mut self.v[self.ci];
             w.goto_current(1);
-            w.signal();
+            cv.notify_all();
         } else if x == screen::kbd_ctrl('B' as isize) {
-            let w = &mut self.v[self.i].lock().unwrap();
-            w.goto_current(-(dat.term.get_terminal_lines() as isize));
-            w.signal();
+            let w = &mut self.v[self.ci];
+            w.goto_current(-(self.attr.get_terminal_lines() as isize));
+            cv.notify_all();
         } else if x == screen::kbd_ctrl('U' as isize) {
-            let w = &mut self.v[self.i].lock().unwrap();
-            w.goto_current(-(dat.term.get_terminal_lines() as isize) / 2);
-            w.signal();
+            let w = &mut self.v[self.ci];
+            w.goto_current(-(self.attr.get_terminal_lines() as isize) / 2);
+            cv.notify_all();
         } else if x == screen::kbd_ctrl('F' as isize) {
-            let w = &mut self.v[self.i].lock().unwrap();
-            w.goto_current(dat.term.get_terminal_lines() as isize);
-            w.signal();
+            let w = &mut self.v[self.ci];
+            w.goto_current(self.attr.get_terminal_lines() as isize);
+            cv.notify_all();
         } else if x == screen::kbd_ctrl('D' as isize) {
-            let w = &mut self.v[self.i].lock().unwrap();
-            w.goto_current(dat.term.get_terminal_lines() as isize / 2);
-            w.signal();
+            let w = &mut self.v[self.ci];
+            w.goto_current(self.attr.get_terminal_lines() as isize / 2);
+            cv.notify_all();
         } else {
-            let w = &mut self.v[self.i].lock().unwrap();
-            w.signal();
+            cv.notify_all();
         }
         Ok(())
     }
 
-    // create window threads
-    pub fn thread_create(&mut self, dat: &mut UserData) {
-        for v in self.v.iter_mut() {
-            let sinterval = dat.opt.sinterval;
-            let minterval = dat.opt.minterval;
-            let showlnum = dat.opt.showlnum;
-            let foldline = dat.opt.foldline;
-            let blinkline = dat.opt.blinkline;
-            let usedelay = dat.opt.usedelay;
-            let standout_attr = dat.standout_attr;
-            let cv = v.clone();
-
-            let t = std::thread::spawn(move || {
-                let mut t = 0;
-                if usedelay {
-                    let r: u64 = rand::prelude::random();
-                    if sinterval != 0 {
-                        t = r % 1000;
-                    } else {
-                        t = r % (1000 * 1000);
-                    }
-                }
-                if t != 0 {
-                    let w = &mut cv.lock().unwrap();
-                    w.repaint(showlnum, foldline, blinkline, standout_attr)
-                        .unwrap();
-                    w.timedwait(t);
-                }
-                unsafe {
-                    while !INTERRUPTED {
-                        let w = &mut cv.lock().unwrap();
-                        w.repaint(showlnum, foldline, blinkline, standout_attr)
-                            .unwrap();
-                        w.timedwait(sinterval * 1000 + minterval);
-                        // w is unlocked here once, correct ?
-                    }
-                }
-            });
-            log::info!("{}: {:?}", stringify!(thread_create), t.thread().id());
-            self.t.push(t);
-        }
+    pub fn set_interrupted(&mut self) {
+        self.is_interrupted = true;
+        log::info!("{}: interrupted", stringify!(set_interrupted));
     }
 
-    // join window threads
-    pub fn thread_join(&mut self) {
-        // https://stackoverflow.com/questions/68966949/unable-to-join-threads-from-joinhandles-stored-in-a-vector-rust
-        while let Some(t) = self.t.pop() {
-            log::info!("{}: {:?}", stringify!(thread_join), t.thread().id());
-            t.join().unwrap();
+    pub fn is_interrupted(&self) -> bool {
+        self.is_interrupted
+    }
+}
+
+fn thread_create_watch(
+    pair: &std::sync::Arc<(std::sync::Mutex<Container>, std::sync::Condvar)>,
+) -> std::thread::JoinHandle<()> {
+    let pair = std::sync::Arc::clone(pair);
+    std::thread::spawn(move || {
+        let tid = std::thread::current().id();
+        let (mco, cv) = &*pair;
+        loop {
+            let mut buf = [0; 1024];
+            let mut co = mco.lock().unwrap();
+            match co.inotify.read_events(&mut buf) {
+                Ok(v) => {
+                    for event in v {
+                        match co.wih.get(&event.wd.get_watch_descriptor_id()) {
+                            Some(&i) => {
+                                log::info!("{:?} watch {} {:?}", tid, i, co.wih);
+                                co.v[i].update_buffer().unwrap();
+                            }
+                            _ => {
+                                log::info!("{:?} {:?}", tid, event);
+                                return;
+                            }
+                        }
+                    }
+                    screen::flash_terminal().unwrap();
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => (),
+                Err(e) => {
+                    log::info!("{:?} {}", tid, e);
+                    return;
+                }
+            };
+            let ret = cv
+                .wait_timeout(co, std::time::Duration::from_secs(1))
+                .unwrap();
+            if ret.0.is_interrupted() {
+                log::info!("{:?} watch interrupted", tid);
+                break;
+            }
         }
+    })
+}
+
+fn thread_create_window(
+    pair: &std::sync::Arc<(std::sync::Mutex<Container>, std::sync::Condvar)>,
+    opt: &Opt,
+) -> Vec<std::thread::JoinHandle<()>> {
+    let mut thrv = Vec::new();
+    let (mco, _) = &**pair;
+    let n = mco.lock().unwrap().v.len();
+
+    for i in 0..n {
+        let sinterval = opt.sinterval;
+        let minterval = opt.minterval;
+        let showlnum = opt.showlnum;
+        let foldline = opt.foldline;
+        let blinkline = opt.blinkline;
+        let usedelay = opt.usedelay;
+        let pair = std::sync::Arc::clone(pair);
+        thrv.push(std::thread::spawn(move || {
+            let tid = std::thread::current().id();
+            let (mco, cv) = &*pair;
+            let mut t = 0;
+            if usedelay {
+                let r: u64 = rand::prelude::random();
+                if sinterval != 0 {
+                    t = r % 1000;
+                } else {
+                    t = r % (1000 * 1000);
+                }
+            }
+            if t != 0 {
+                let mut co = mco.lock().unwrap();
+                let a = co.attr.get_standout_attr();
+                let w = &mut co.v[i];
+                w.repaint(showlnum, foldline, blinkline, a).unwrap();
+                let ret = cv
+                    .wait_timeout(co, std::time::Duration::from_millis(t))
+                    .unwrap();
+                if ret.0.is_interrupted() {
+                    log::info!("{:?} window interrupted", tid);
+                    return;
+                }
+            }
+            loop {
+                let mut co = mco.lock().unwrap();
+                let a = co.attr.get_standout_attr();
+                let w = &mut co.v[i];
+                let t = sinterval * 1000 + minterval;
+                w.repaint(showlnum, foldline, blinkline, a).unwrap();
+                let ret = cv
+                    .wait_timeout(co, std::time::Duration::from_millis(t))
+                    .unwrap();
+                if ret.0.is_interrupted() {
+                    log::info!("{:?} window interrupted", tid);
+                    break;
+                }
+            }
+        }));
+    }
+    thrv
+}
+
+// XXX Threads lock the entire container, whereas in C++ / Go they only
+// lock shared resource, i.e. terminal size and buffers.
+pub fn thread_create(
+    pair: &std::sync::Arc<(std::sync::Mutex<Container>, std::sync::Condvar)>,
+    opt: &Opt,
+) -> Vec<std::thread::JoinHandle<()>> {
+    let mut thrv = Vec::new();
+    thrv.push(thread_create_watch(pair));
+    thrv.extend(thread_create_window(pair, opt));
+    for thr in thrv.iter() {
+        log::info!("{}: {:?}", stringify!(thread_create), thr.thread().id());
+    }
+    thrv
+}
+
+pub fn thread_join(thrv: &mut Vec<std::thread::JoinHandle<()>>) {
+    while let Some(thr) = thrv.pop() {
+        log::info!("{}: {:?}", stringify!(thread_join), thr.thread().id());
+        thr.join().unwrap();
     }
 }
