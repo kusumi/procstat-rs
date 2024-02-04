@@ -7,7 +7,7 @@ use crate::curses as screen;
 use crate::stdout as screen;
 
 #[derive(Debug, Default)]
-pub struct Panel {
+pub(crate) struct Panel {
     scr: screen::Screen,
     ylen: usize,
     xlen: usize,
@@ -15,7 +15,7 @@ pub struct Panel {
     xpos: usize,
 }
 
-pub trait PanelImpl {
+pub(crate) trait PanelImpl {
     fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, attr: &screen::Attr) -> Result<Self>
     where
         Self: Sized;

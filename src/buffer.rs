@@ -4,7 +4,7 @@ use std::io::BufRead;
 use std::io::Seek;
 
 #[derive(Debug)]
-pub struct Buffer {
+pub(crate) struct Buffer {
     chunk: Vec<String>,
     reader: Option<std::io::BufReader<std::fs::File>>,
     curline: usize,
@@ -12,7 +12,7 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn new() -> Result<Self> {
+    pub(crate) fn new() -> Result<Self> {
         let mut buffer = Buffer {
             chunk: Vec::new(),
             reader: None,
@@ -24,7 +24,7 @@ impl Buffer {
         Ok(buffer)
     }
 
-    pub fn init(&mut self, f: &str) -> std::io::Result<()> {
+    pub(crate) fn init(&mut self, f: &str) -> std::io::Result<()> {
         assert!(self.reader.is_none());
         let fp = std::fs::File::open(f)?;
         self.reader = Some(std::io::BufReader::new(fp));
@@ -32,21 +32,21 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn get_max_line(&mut self) -> usize {
+    pub(crate) fn get_max_line(&mut self) -> usize {
         self.block_till_ready();
         let ret = self.maxline;
         self.signal_blocked();
         ret
     }
 
-    pub fn is_dead(&mut self) -> bool {
+    pub(crate) fn is_dead(&mut self) -> bool {
         self.block_till_ready();
         let ret = self.reader.is_none();
         self.signal_blocked();
         ret
     }
 
-    pub fn update(&mut self) -> std::io::Result<()> {
+    pub(crate) fn update(&mut self) -> std::io::Result<()> {
         if self.is_dead() {
             return Ok(());
         }
@@ -63,7 +63,7 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn readline(
+    pub(crate) fn readline(
         &mut self,
         pos: &mut usize,
         s: &mut String,
@@ -104,7 +104,7 @@ impl Buffer {
     }
 
     // caller needs to test if ready
-    pub fn clear(&mut self) -> std::io::Result<()> {
+    pub(crate) fn clear(&mut self) -> std::io::Result<()> {
         self.reader
             .as_mut()
             .ok_or_else(util::error)?
@@ -113,11 +113,11 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn block_till_ready(&mut self) {
+    pub(crate) fn block_till_ready(&mut self) {
         // NOP unless fine grained locking
     }
 
-    pub fn signal_blocked(&mut self) {
+    pub(crate) fn signal_blocked(&mut self) {
         // NOP unless fine grained locking
     }
 }

@@ -9,7 +9,7 @@ use crate::curses as screen;
 use crate::stdout as screen;
 
 #[derive(Debug, Default)]
-pub struct Frame {
+pub(crate) struct Frame {
     scr: screen::Screen,
     ylen: usize,
     xlen: usize,

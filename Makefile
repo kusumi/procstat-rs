@@ -9,6 +9,10 @@ fmt:
 	git status
 clean:
 	cargo clean
+test1:
+	cargo test --release --features=curses
+test2:
+	cargo test --release --features=stdout
 lint1:
 	cargo clippy --release --fix --features=curses
 	git status
@@ -16,5 +20,5 @@ lint2:
 	cargo clippy --release --fix --features=stdout
 	git status
 
-xxx1:	fmt lint1
-xxx2:	fmt lint2
+xxx1:	fmt lint1 test1
+xxx2:	fmt lint2 test2

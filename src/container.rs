@@ -10,7 +10,7 @@ use crate::curses as screen;
 use crate::stdout as screen;
 
 #[derive(Debug)]
-pub struct Container {
+pub(crate) struct Container {
     v: Vec<window::Window>,
     biv: Vec<usize>,
     wih: std::collections::HashMap<i32, usize>,
@@ -35,7 +35,7 @@ impl Default for Container {
 }
 
 impl Container {
-    pub fn new(args: Vec<String>, attr: screen::Attr, opt: &Opt) -> Result<Self> {
+    pub(crate) fn new(args: Vec<String>, attr: screen::Attr, opt: &Opt) -> Result<Self> {
         let mut co = Container {
             attr,
             ..Default::default()
@@ -210,8 +210,14 @@ impl Container {
         Ok(())
     }
 
-    pub fn parse_event(&mut self, x: isize, cv: &std::sync::Condvar, opt: &Opt) -> Result<()> {
+    pub(crate) fn parse_event(
+        &mut self,
+        x: isize,
+        cv: &std::sync::Condvar,
+        opt: &Opt,
+    ) -> Result<()> {
         if x == screen::KBD_ERR {
+            //log::info!("{}: KBD_ERR", stringify!(parse_event));
         } else if x == screen::KBD_RESIZE || x == screen::kbd_ctrl('l' as isize) {
             screen::update_terminal_size(&mut self.attr)?;
             screen::clear_terminal()?;
@@ -258,12 +264,12 @@ impl Container {
         Ok(())
     }
 
-    pub fn set_interrupted(&mut self) {
+    pub(crate) fn set_interrupted(&mut self) {
         self.is_interrupted = true;
         log::info!("{}: interrupted", stringify!(set_interrupted));
     }
 
-    pub fn is_interrupted(&self) -> bool {
+    pub(crate) fn is_interrupted(&self) -> bool {
         self.is_interrupted
     }
 }
@@ -274,10 +280,10 @@ fn thread_create_watch(
     let pair = std::sync::Arc::clone(pair);
     std::thread::spawn(move || {
         let tid = std::thread::current().id();
-        let (mco, cv) = &*pair;
+        let (co, cv) = &*pair;
         loop {
             let mut buf = [0; 1024];
-            let mut co = mco.lock().unwrap();
+            let mut co = co.lock().unwrap();
             match co.inotify.read_events(&mut buf) {
                 Ok(v) => {
                     for event in v {
@@ -316,8 +322,8 @@ fn thread_create_window(
     opt: &Opt,
 ) -> Vec<std::thread::JoinHandle<()>> {
     let mut thrv = Vec::new();
-    let (mco, _) = &**pair;
-    let n = mco.lock().unwrap().v.len();
+    let (co, _) = &**pair;
+    let n = co.lock().unwrap().v.len();
 
     for i in 0..n {
         let sinterval = opt.sinterval;
@@ -329,42 +335,29 @@ fn thread_create_window(
         let pair = std::sync::Arc::clone(pair);
         thrv.push(std::thread::spawn(move || {
             let tid = std::thread::current().id();
-            let (mco, cv) = &*pair;
-            let mut t = 0;
+            let (co, cv) = &*pair;
+            let t = sinterval * 1000 + minterval;
+            let mut d = t;
             if usedelay {
                 let r: u64 = rand::prelude::random();
                 if sinterval != 0 {
-                    t = r % 1000;
+                    d = r % 1000;
                 } else {
-                    t = r % (1000 * 1000);
-                }
-            }
-            if t != 0 {
-                let mut co = mco.lock().unwrap();
-                let a = co.attr.get_standout_attr();
-                let w = &mut co.v[i];
-                w.repaint(showlnum, foldline, blinkline, a).unwrap();
-                let ret = cv
-                    .wait_timeout(co, std::time::Duration::from_millis(t))
-                    .unwrap();
-                if ret.0.is_interrupted() {
-                    log::info!("{:?} window interrupted", tid);
-                    return;
+                    d = r % (1000 * 1000);
                 }
             }
             loop {
-                let mut co = mco.lock().unwrap();
+                let mut co = co.lock().unwrap();
                 let a = co.attr.get_standout_attr();
-                let w = &mut co.v[i];
-                let t = sinterval * 1000 + minterval;
-                w.repaint(showlnum, foldline, blinkline, a).unwrap();
+                co.v[i].repaint(showlnum, foldline, blinkline, a).unwrap();
                 let ret = cv
-                    .wait_timeout(co, std::time::Duration::from_millis(t))
+                    .wait_timeout(co, std::time::Duration::from_millis(d))
                     .unwrap();
                 if ret.0.is_interrupted() {
                     log::info!("{:?} window interrupted", tid);
                     break;
                 }
+                d = t;
             }
         }));
     }
@@ -373,7 +366,7 @@ fn thread_create_window(
 
 // XXX Threads lock the entire container, whereas in C++ / Go they only
 // lock shared resource, i.e. terminal size and buffers.
-pub fn thread_create(
+pub(crate) fn thread_create(
     pair: &std::sync::Arc<(std::sync::Mutex<Container>, std::sync::Condvar)>,
     opt: &Opt,
 ) -> Vec<std::thread::JoinHandle<()>> {
@@ -386,7 +379,7 @@ pub fn thread_create(
     thrv
 }
 
-pub fn thread_join(thrv: &mut Vec<std::thread::JoinHandle<()>>) {
+pub(crate) fn thread_join(thrv: &mut Vec<std::thread::JoinHandle<()>>) {
     while let Some(thr) = thrv.pop() {
         log::info!("{}: {:?}", stringify!(thread_join), thr.thread().id());
         thr.join().unwrap();

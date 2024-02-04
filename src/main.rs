@@ -8,7 +8,7 @@ mod panel;
 mod util;
 mod window;
 
-const VERSION: [i32; 3] = [0, 1, 3];
+const VERSION: [i32; 3] = [0, 1, 4];
 
 #[cfg(feature = "curses")]
 mod curses;
@@ -105,7 +105,7 @@ extern "C" fn sigint_handler(_: libc::c_int) {
     }
 }
 
-pub fn is_interrupted() -> bool {
+pub(crate) fn is_interrupted() -> bool {
     unsafe { INTERRUPTED }
 }
 
@@ -246,14 +246,15 @@ fn main() {
     ));
     let mut thrv = container::thread_create(&pair, &opt);
     loop {
-        // XXX Do something outside of mco.lock(), otherwise this loop never
+        // XXX Do something outside of co.lock(), otherwise this loop never
         // releases the mutex, and as a result window threads get blocked.
         let x = screen::read_incoming();
-        let (mco, cv) = &*pair;
-        let mut co = mco.lock().unwrap();
+        let (co, cv) = &*pair;
+        let mut co = co.lock().unwrap();
         co.parse_event(x, cv, &opt).unwrap();
         if is_interrupted() {
             co.set_interrupted();
+            cv.notify_all();
             break;
         }
     }

@@ -8,12 +8,12 @@ lazy_static! {
 
 // taken from /usr/include/curses.h
 // XXX ncurses::KEY_xxx ?
-pub const KBD_ERR: isize = -1;
-pub const KBD_UP: isize = 0o403;
-pub const KBD_DOWN: isize = 0o402;
-pub const KBD_LEFT: isize = 0o404;
-pub const KBD_RIGHT: isize = 0o405;
-pub const KBD_RESIZE: isize = 0o632;
+pub(crate) const KBD_ERR: isize = -1;
+pub(crate) const KBD_UP: isize = 0o403;
+pub(crate) const KBD_DOWN: isize = 0o402;
+pub(crate) const KBD_LEFT: isize = 0o404;
+pub(crate) const KBD_RIGHT: isize = 0o405;
+pub(crate) const KBD_RESIZE: isize = 0o632;
 
 // taken from /usr/include/curses.h
 // XXX ncurses::COLOR_xxx ?
@@ -26,12 +26,12 @@ const COLOR_MAGENTA: i16 = 5;
 const COLOR_CYAN: i16 = 6;
 const COLOR_WHITE: i16 = 7;
 
-pub fn kbd_ctrl(x: isize) -> isize {
+pub(crate) fn kbd_ctrl(x: isize) -> isize {
     x & 0x1F
 }
 
 #[derive(Debug, Default)]
-pub struct Attr {
+pub(crate) struct Attr {
     lines: usize,
     cols: usize,
     color_attr: u32,
@@ -39,31 +39,31 @@ pub struct Attr {
 }
 
 impl Attr {
-    pub fn get_terminal_lines(&self) -> usize {
+    pub(crate) fn get_terminal_lines(&self) -> usize {
         self.lines
     }
 
-    pub fn get_terminal_cols(&self) -> usize {
+    pub(crate) fn get_terminal_cols(&self) -> usize {
         self.cols
     }
 
-    pub fn get_color_attr(&self) -> u32 {
+    pub(crate) fn get_color_attr(&self) -> u32 {
         self.color_attr
     }
 
-    pub fn get_standout_attr(&self) -> u32 {
+    pub(crate) fn get_standout_attr(&self) -> u32 {
         self.standout_attr
     }
 }
 
-pub fn newattr() -> Attr {
+pub(crate) fn newattr() -> Attr {
     Attr {
         ..Default::default()
     }
 }
 
 #[derive(Debug)]
-pub struct Screen {
+pub(crate) struct Screen {
     win: ncurses::WINDOW,
 }
 
@@ -77,7 +77,7 @@ impl Default for Screen {
     }
 }
 
-pub fn update_terminal_size(attr: &mut Attr) -> Result<()> {
+pub(crate) fn update_terminal_size(attr: &mut Attr) -> Result<()> {
     let _mtx = MTX.lock()?;
     let mut y = 0;
     let mut x = 0;
@@ -88,7 +88,7 @@ pub fn update_terminal_size(attr: &mut Attr) -> Result<()> {
     Ok(())
 }
 
-pub fn string_to_color(arg: &str) -> i16 {
+pub(crate) fn string_to_color(arg: &str) -> i16 {
     match arg {
         "black" => COLOR_BLACK,
         "red" => COLOR_RED,
@@ -102,7 +102,7 @@ pub fn string_to_color(arg: &str) -> i16 {
     }
 }
 
-pub fn init_screen(fgcolor: i16, bgcolor: i16) -> Result<Attr> {
+pub(crate) fn init_screen(fgcolor: i16, bgcolor: i16) -> Result<Attr> {
     ncurses::initscr();
     ncurses::keypad(ncurses::stdscr(), true);
     ncurses::noecho();
@@ -128,29 +128,29 @@ pub fn init_screen(fgcolor: i16, bgcolor: i16) -> Result<Attr> {
     Ok(attr)
 }
 
-pub fn cleanup_screen() -> Result<()> {
+pub(crate) fn cleanup_screen() -> Result<()> {
     ncurses::curs_set(ncurses::CURSOR_VISIBILITY::CURSOR_VISIBLE).ok_or_else(util::error)?;
     ncurses::endwin();
     Ok(())
 }
 
-pub fn read_incoming() -> isize {
+pub(crate) fn read_incoming() -> isize {
     ncurses::wgetch(ncurses::stdscr()) as isize
 }
 
-pub fn clear_terminal() -> Result<()> {
+pub(crate) fn clear_terminal() -> Result<()> {
     let _mtx = MTX.lock()?;
     ncurses::wclear(ncurses::stdscr());
     ncurses::wrefresh(ncurses::stdscr());
     Ok(())
 }
 
-pub fn flash_terminal() -> Result<()> {
+pub(crate) fn flash_terminal() -> Result<()> {
     ncurses::flash();
     Ok(())
 }
 
-pub fn alloc_screen(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Result<Screen> {
+pub(crate) fn alloc_screen(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Result<Screen> {
     let _mtx = MTX.lock()?;
     let scr = Screen::new(ylen, xlen, ypos, xpos);
     ncurses::scrollok(scr.win, false);
@@ -160,19 +160,19 @@ pub fn alloc_screen(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Resul
 }
 
 impl Screen {
-    pub fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Self {
+    pub(crate) fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Self {
         Self {
             win: ncurses::newwin(ylen as i32, xlen as i32, ypos as i32, xpos as i32),
         }
     }
 
-    pub fn delete(&mut self) -> Result<()> {
+    pub(crate) fn delete(&mut self) -> Result<()> {
         let _mtx = MTX.lock()?;
         ncurses::delwin(self.win);
         Ok(())
     }
 
-    pub fn print(
+    pub(crate) fn print(
         &self,
         y: usize,
         x: usize,
@@ -196,31 +196,31 @@ impl Screen {
         Ok(())
     }
 
-    pub fn refresh(&mut self) -> Result<()> {
+    pub(crate) fn refresh(&mut self) -> Result<()> {
         let _mtx = MTX.lock()?;
         ncurses::wrefresh(self.win);
         Ok(())
     }
 
-    pub fn erase(&mut self) -> Result<()> {
+    pub(crate) fn erase(&mut self) -> Result<()> {
         let _mtx = MTX.lock()?;
         ncurses::werase(self.win);
         Ok(())
     }
 
-    pub fn resize(&mut self, ylen: usize, xlen: usize) -> Result<()> {
+    pub(crate) fn resize(&mut self, ylen: usize, xlen: usize) -> Result<()> {
         let _mtx = MTX.lock()?;
         ncurses::wresize(self.win, ylen as i32, xlen as i32);
         Ok(())
     }
 
-    pub fn r#move(&mut self, ypos: usize, xpos: usize) -> Result<()> {
+    pub(crate) fn r#move(&mut self, ypos: usize, xpos: usize) -> Result<()> {
         let _mtx = MTX.lock()?;
         ncurses::mvwin(self.win, ypos as i32, xpos as i32);
         Ok(())
     }
 
-    pub fn r#box(&mut self) -> Result<()> {
+    pub(crate) fn r#box(&mut self) -> Result<()> {
         let _mtx = MTX.lock()?;
         ncurses::wborder(
             self.win,
@@ -236,7 +236,7 @@ impl Screen {
         Ok(())
     }
 
-    pub fn bkgd(&mut self, color_attr: u32) -> Result<()> {
+    pub(crate) fn bkgd(&mut self, color_attr: u32) -> Result<()> {
         let _mtx = MTX.lock()?;
         if color_attr != ncurses::A_NORMAL() {
             ncurses::wbkgd(self.win, color_attr | ' ' as u32);

@@ -11,7 +11,7 @@ use crate::curses as screen;
 use crate::stdout as screen;
 
 #[derive(Debug)]
-pub struct Window {
+pub(crate) struct Window {
     panel: panel::Panel,
     frame: frame::Frame,
     buffer: buffer::Buffer,
@@ -19,7 +19,7 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn new(
+    pub(crate) fn new(
         ylen: usize,
         xlen: usize,
         ypos: usize,
@@ -37,11 +37,11 @@ impl Window {
         Ok(w)
     }
 
-    pub fn is_dead(&mut self) -> bool {
+    pub(crate) fn is_dead(&mut self) -> bool {
         self.buffer.is_dead()
     }
 
-    pub fn resize(
+    pub(crate) fn resize(
         &mut self,
         ylen: usize,
         xlen: usize,
@@ -56,7 +56,7 @@ impl Window {
         Ok(())
     }
 
-    pub fn attach_buffer(&mut self, f: &str) -> Result<()> {
+    pub(crate) fn attach_buffer(&mut self, f: &str) -> Result<()> {
         self.buffer.init(f)?; // still had no path set at this point
         self.frame.set_title(f)?;
         self.panel.set_title(f)?;
@@ -69,7 +69,7 @@ impl Window {
         Ok(())
     }
 
-    pub fn update_buffer(&mut self) -> std::io::Result<()> {
+    pub(crate) fn update_buffer(&mut self) -> std::io::Result<()> {
         self.buffer.update()?;
         log::info!(
             "{}: {:?} {:?}",
@@ -80,20 +80,20 @@ impl Window {
         Ok(())
     }
 
-    pub fn focus(&mut self, t: bool, standout_attr: u32) -> Result<()> {
+    pub(crate) fn focus(&mut self, t: bool, standout_attr: u32) -> Result<()> {
         self.frame.set_focus(t, standout_attr)?;
         self.panel.set_focus(t, standout_attr)
     }
 
-    pub fn goto_head(&mut self) {
+    pub(crate) fn goto_head(&mut self) {
         self.offset = 0;
     }
 
-    pub fn goto_tail(&mut self) {
+    pub(crate) fn goto_tail(&mut self) {
         self.offset = self.buffer.get_max_line();
     }
 
-    pub fn goto_current(&mut self, d: isize) {
+    pub(crate) fn goto_current(&mut self, d: isize) {
         self.offset = if d < 0 {
             if self.offset < d.unsigned_abs() {
                 0
@@ -107,7 +107,7 @@ impl Window {
         }
     }
 
-    pub fn repaint(
+    pub(crate) fn repaint(
         &mut self,
         showlnum: bool,
         foldline: bool,

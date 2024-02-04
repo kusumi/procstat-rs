@@ -1,4 +1,4 @@
-procstat-rs ([v0.1.3](https://github.com/kusumi/procstat-rs/releases/tag/v0.1.3))
+procstat-rs ([v0.1.4](https://github.com/kusumi/procstat-rs/releases/tag/v0.1.4))
 ========
 
 ## About
