@@ -8,7 +8,7 @@ mod panel;
 mod util;
 mod window;
 
-const VERSION: [i32; 3] = [0, 1, 4];
+const VERSION: [i32; 3] = [0, 1, 5];
 
 #[cfg(feature = "curses")]
 mod curses;
@@ -219,9 +219,9 @@ fn main() {
     }
     for x in layout.chars() {
         if ('1'..='9').contains(&x) {
-            opt.layout.push(x as usize - '0' as usize);
+            opt.layout.push(x.to_digit(10).unwrap().try_into().unwrap());
         } else if ('a'..='f').contains(&x) {
-            opt.layout.push(x as usize - 'a' as usize + 10);
+            opt.layout.push(x.to_digit(16).unwrap().try_into().unwrap());
         } else {
             opt.layout.push(0);
         }

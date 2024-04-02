@@ -33,9 +33,8 @@ impl panel::PanelImpl for Frame {
         xpos: usize,
         attr: &screen::Attr,
     ) -> Result<Self> {
-        let scr = screen::alloc_screen(ylen, xlen, ypos, xpos)?;
-        let mut frame = Frame {
-            scr,
+        let mut frame = Self {
+            scr: screen::alloc_screen(ylen, xlen, ypos, xpos)?, // alloc + delete
             title: "".to_string(),
             focus: false,
             ..Default::default()

@@ -8,12 +8,12 @@ lazy_static! {
 
 // taken from /usr/include/curses.h
 // XXX ncurses::KEY_xxx ?
-pub(crate) const KBD_ERR: isize = -1;
-pub(crate) const KBD_UP: isize = 0o403;
-pub(crate) const KBD_DOWN: isize = 0o402;
-pub(crate) const KBD_LEFT: isize = 0o404;
-pub(crate) const KBD_RIGHT: isize = 0o405;
-pub(crate) const KBD_RESIZE: isize = 0o632;
+pub(crate) const KBD_ERR: i32 = -1;
+pub(crate) const KBD_UP: u32 = 0o403;
+pub(crate) const KBD_DOWN: u32 = 0o402;
+pub(crate) const KBD_LEFT: u32 = 0o404;
+pub(crate) const KBD_RIGHT: u32 = 0o405;
+pub(crate) const KBD_RESIZE: u32 = 0o632;
 
 // taken from /usr/include/curses.h
 // XXX ncurses::COLOR_xxx ?
@@ -26,7 +26,7 @@ const COLOR_MAGENTA: i16 = 5;
 const COLOR_CYAN: i16 = 6;
 const COLOR_WHITE: i16 = 7;
 
-pub(crate) fn kbd_ctrl(x: isize) -> isize {
+pub(crate) fn kbd_ctrl(x: u32) -> u32 {
     x & 0x1F
 }
 
@@ -39,6 +39,12 @@ pub(crate) struct Attr {
 }
 
 impl Attr {
+    pub(crate) fn new() -> Self {
+        Self {
+            ..Default::default()
+        }
+    }
+
     pub(crate) fn get_terminal_lines(&self) -> usize {
         self.lines
     }
@@ -53,12 +59,6 @@ impl Attr {
 
     pub(crate) fn get_standout_attr(&self) -> u32 {
         self.standout_attr
-    }
-}
-
-pub(crate) fn newattr() -> Attr {
-    Attr {
-        ..Default::default()
     }
 }
 
@@ -82,8 +82,8 @@ pub(crate) fn update_terminal_size(attr: &mut Attr) -> Result<()> {
     let mut y = 0;
     let mut x = 0;
     ncurses::getmaxyx(ncurses::stdscr(), &mut y, &mut x);
-    attr.lines = y as usize;
-    attr.cols = x as usize;
+    attr.lines = y.try_into().unwrap();
+    attr.cols = x.try_into().unwrap();
     log::info!("{}: {:?}", stringify!(update_terminal_size), attr);
     Ok(())
 }
@@ -111,7 +111,7 @@ pub(crate) fn init_screen(fgcolor: i16, bgcolor: i16) -> Result<Attr> {
     ncurses::wtimeout(ncurses::stdscr(), 500);
     clear_terminal()?;
 
-    let mut attr = newattr();
+    let mut attr = Attr::new();
     update_terminal_size(&mut attr)?;
 
     if ncurses::has_colors() {
@@ -134,8 +134,8 @@ pub(crate) fn cleanup_screen() -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn read_incoming() -> isize {
-    ncurses::wgetch(ncurses::stdscr()) as isize
+pub(crate) fn read_incoming() -> i32 {
+    ncurses::wgetch(ncurses::stdscr())
 }
 
 pub(crate) fn clear_terminal() -> Result<()> {
@@ -162,7 +162,12 @@ pub(crate) fn alloc_screen(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -
 impl Screen {
     pub(crate) fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Self {
         Self {
-            win: ncurses::newwin(ylen as i32, xlen as i32, ypos as i32, xpos as i32),
+            win: ncurses::newwin(
+                ylen.try_into().unwrap(),
+                xlen.try_into().unwrap(),
+                ypos.try_into().unwrap(),
+                xpos.try_into().unwrap(),
+            ),
         }
     }
 
@@ -191,7 +196,7 @@ impl Screen {
             ncurses::A_NORMAL()
         };
         ncurses::wattron(self.win, attr);
-        ncurses::mvwprintw(self.win, y as i32, x as i32, s);
+        ncurses::mvwprintw(self.win, y.try_into().unwrap(), x.try_into().unwrap(), s);
         ncurses::wattroff(self.win, attr);
         Ok(())
     }
@@ -210,13 +215,13 @@ impl Screen {
 
     pub(crate) fn resize(&mut self, ylen: usize, xlen: usize) -> Result<()> {
         let _mtx = MTX.lock()?;
-        ncurses::wresize(self.win, ylen as i32, xlen as i32);
+        ncurses::wresize(self.win, ylen.try_into().unwrap(), xlen.try_into().unwrap());
         Ok(())
     }
 
     pub(crate) fn r#move(&mut self, ypos: usize, xpos: usize) -> Result<()> {
         let _mtx = MTX.lock()?;
-        ncurses::mvwin(self.win, ypos as i32, xpos as i32);
+        ncurses::mvwin(self.win, ypos.try_into().unwrap(), xpos.try_into().unwrap());
         Ok(())
     }
 
@@ -239,7 +244,7 @@ impl Screen {
     pub(crate) fn bkgd(&mut self, color_attr: u32) -> Result<()> {
         let _mtx = MTX.lock()?;
         if color_attr != ncurses::A_NORMAL() {
-            ncurses::wbkgd(self.win, color_attr | ' ' as u32);
+            ncurses::wbkgd(self.win, color_attr | u32::from(' '));
         }
         Ok(())
     }

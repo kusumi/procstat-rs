@@ -27,7 +27,7 @@ impl Default for Container {
             biv: Vec::new(),
             wih: std::collections::HashMap::new(),
             ci: 0,
-            attr: screen::newattr(),
+            attr: screen::Attr::new(),
             inotify: inotify::Inotify::init().unwrap(),
             is_interrupted: false,
         }
@@ -36,7 +36,7 @@ impl Default for Container {
 
 impl Container {
     pub(crate) fn new(args: Vec<String>, attr: screen::Attr, opt: &Opt) -> Result<Self> {
-        let mut co = Container {
+        let mut co = Self {
             attr,
             ..Default::default()
         };
@@ -210,53 +210,51 @@ impl Container {
         Ok(())
     }
 
-    pub(crate) fn parse_event(
-        &mut self,
-        x: isize,
-        cv: &std::sync::Condvar,
-        opt: &Opt,
-    ) -> Result<()> {
+    pub(crate) fn parse_event(&mut self, x: i32, cv: &std::sync::Condvar, opt: &Opt) -> Result<()> {
         if x == screen::KBD_ERR {
             //log::info!("{}: KBD_ERR", stringify!(parse_event));
-        } else if x == screen::KBD_RESIZE || x == screen::kbd_ctrl('l' as isize) {
+            return Ok(());
+        }
+        let x = u32::try_from(x).unwrap();
+        if x == screen::KBD_RESIZE || x == screen::kbd_ctrl(u32::from('l')) {
             screen::update_terminal_size(&mut self.attr)?;
             screen::clear_terminal()?;
             self.build_window(opt)?;
-        } else if x == 'h' as isize || x == screen::KBD_LEFT {
+        } else if x == u32::from('h') || x == screen::KBD_LEFT {
             self.goto_prev_window()?;
-        } else if x == 'l' as isize || x == screen::KBD_RIGHT {
+        } else if x == u32::from('l') || x == screen::KBD_RIGHT {
             self.goto_next_window()?;
-        } else if x == '0' as isize {
+        } else if x == u32::from('0') {
             let w = &mut self.v[self.ci];
             w.goto_head();
             cv.notify_all();
-        } else if x == '$' as isize {
+        } else if x == u32::from('$') {
             let w = &mut self.v[self.ci];
             w.goto_tail();
             cv.notify_all();
-        } else if x == 'k' as isize || x == screen::KBD_UP {
+        } else if x == u32::from('k') || x == screen::KBD_UP {
             let w = &mut self.v[self.ci];
             w.goto_current(-1);
             cv.notify_all();
-        } else if x == 'j' as isize || x == screen::KBD_DOWN {
+        } else if x == u32::from('j') || x == screen::KBD_DOWN {
             let w = &mut self.v[self.ci];
             w.goto_current(1);
             cv.notify_all();
-        } else if x == screen::kbd_ctrl('B' as isize) {
+        } else if x == screen::kbd_ctrl(u32::from('B')) {
             let w = &mut self.v[self.ci];
-            w.goto_current(-(self.attr.get_terminal_lines() as isize));
+            w.goto_current(-isize::try_from(self.attr.get_terminal_lines()).unwrap());
             cv.notify_all();
-        } else if x == screen::kbd_ctrl('U' as isize) {
+        } else if x == screen::kbd_ctrl(u32::from('U')) {
             let w = &mut self.v[self.ci];
-            w.goto_current(-(self.attr.get_terminal_lines() as isize) / 2);
+            w.goto_current(-isize::try_from(self.attr.get_terminal_lines()).unwrap() / 2);
             cv.notify_all();
-        } else if x == screen::kbd_ctrl('F' as isize) {
+        } else if x == screen::kbd_ctrl(u32::from('F')) {
             let w = &mut self.v[self.ci];
-            w.goto_current(self.attr.get_terminal_lines() as isize);
+            w.goto_current(isize::try_from(self.attr.get_terminal_lines()).unwrap());
             cv.notify_all();
-        } else if x == screen::kbd_ctrl('D' as isize) {
+        } else if x == screen::kbd_ctrl(u32::from('D')) {
             let w = &mut self.v[self.ci];
-            w.goto_current(self.attr.get_terminal_lines() as isize / 2);
+            w.goto_current(isize::try_from(self.attr.get_terminal_lines()).unwrap() / 2);
             cv.notify_all();
         } else {
             cv.notify_all();
@@ -340,11 +338,7 @@ fn thread_create_window(
             let mut d = t;
             if usedelay {
                 let r: u64 = rand::prelude::random();
-                if sinterval != 0 {
-                    d = r % 1000;
-                } else {
-                    d = r % (1000 * 1000);
-                }
+                d = r % 1000;
             }
             loop {
                 let mut co = co.lock().unwrap();

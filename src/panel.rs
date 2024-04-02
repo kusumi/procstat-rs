@@ -56,9 +56,8 @@ impl PanelImpl for Panel {
         xpos: usize,
         attr: &screen::Attr,
     ) -> Result<Self> {
-        let scr = screen::alloc_screen(ylen, xlen, ypos, xpos)?;
-        let mut panel = Panel {
-            scr,
+        let mut panel = Self {
+            scr: screen::alloc_screen(ylen, xlen, ypos, xpos)?, // alloc + delete
             ..Default::default()
         };
         panel.update_size(ylen, xlen, ypos, xpos);

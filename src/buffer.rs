@@ -13,7 +13,7 @@ pub(crate) struct Buffer {
 
 impl Buffer {
     pub(crate) fn new() -> Result<Self> {
-        let mut buffer = Buffer {
+        let mut buffer = Self {
             chunk: Vec::new(),
             reader: None,
             curline: 0,

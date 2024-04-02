@@ -25,8 +25,8 @@ impl Window {
         ypos: usize,
         xpos: usize,
         attr: &screen::Attr,
-    ) -> Result<Window> {
-        let mut w = Window {
+    ) -> Result<Self> {
+        let mut w = Self {
             frame: frame::Frame::new(ylen, xlen, ypos, xpos, attr)?,
             panel: panel::Panel::new(ylen - 2, xlen - 2, ypos + 1, xpos + 1, attr)?,
             buffer: buffer::Buffer::new()?,
@@ -100,10 +100,10 @@ impl Window {
             } else {
                 self.offset - d.unsigned_abs()
             }
-        } else if self.offset + d as usize > self.buffer.get_max_line() {
+        } else if self.offset + usize::try_from(d).unwrap() > self.buffer.get_max_line() {
             self.buffer.get_max_line()
         } else {
-            self.offset + d as usize
+            self.offset + usize::try_from(d).unwrap()
         }
     }
 
