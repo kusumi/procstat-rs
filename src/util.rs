@@ -84,10 +84,10 @@ mod tests {
                 o: "/does/NOT/exist",
             },
         ];
-        for x in path_list.iter() {
+        for x in &path_list {
             match super::get_abspath(x.i) {
                 Ok(v) => assert_eq!(v, x.o),
-                Err(e) => panic!("{} {:?}", e, x),
+                Err(e) => panic!("{e} {x:?}"),
             }
         }
     }

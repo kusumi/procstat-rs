@@ -8,7 +8,7 @@ mod panel;
 mod util;
 mod window;
 
-const VERSION: [i32; 3] = [0, 1, 5];
+const VERSION: [i32; 3] = [0, 1, 6];
 
 #[cfg(feature = "curses")]
 mod curses;
@@ -65,10 +65,10 @@ fn print_version() {
     println!("{}", get_version_string());
 }
 
-fn usage(progname: &str, opts: getopts::Options) {
+fn usage(progname: &str, opts: &getopts::Options) {
     println!(
         "{}",
-        opts.usage(&format!("usage: {} [<options>] <paths>", progname))
+        opts.usage(&format!("usage: {progname} [<options>] <paths>"))
     );
     println!(
         "Commands:
@@ -172,7 +172,7 @@ fn main() {
         std::process::exit(1);
     }
     if matches.opt_present("h") {
-        usage(&progname, opts);
+        usage(&progname, &opts);
         std::process::exit(1);
     }
 
@@ -181,7 +181,7 @@ fn main() {
     };
     let mut layout = match matches.opt_str("c") {
         Some(v) => v.to_lowercase(),
-        None => "".to_string(),
+        None => String::new(),
     };
     opt.fgcolor = match matches.opt_str("fg") {
         Some(v) => screen::string_to_color(&v),
@@ -208,7 +208,7 @@ fn main() {
     opt.debug = matches.opt_present("debug");
 
     if matches.free.is_empty() {
-        usage(&progname, opts);
+        usage(&progname, &opts);
         std::process::exit(1);
     }
 
@@ -241,7 +241,7 @@ fn main() {
     }
 
     let pair = std::sync::Arc::new((
-        std::sync::Mutex::new(container::Container::new(args, attr, &opt).unwrap()),
+        std::sync::Mutex::new(container::Container::new(&args, attr, &opt).unwrap()),
         std::sync::Condvar::new(),
     ));
     let mut thrv = container::thread_create(&pair, &opt);

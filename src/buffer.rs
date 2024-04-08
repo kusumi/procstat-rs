@@ -33,24 +33,17 @@ impl Buffer {
     }
 
     pub(crate) fn get_max_line(&mut self) -> usize {
-        self.block_till_ready();
-        let ret = self.maxline;
-        self.signal_blocked();
-        ret
+        self.maxline
     }
 
     pub(crate) fn is_dead(&mut self) -> bool {
-        self.block_till_ready();
-        let ret = self.reader.is_none();
-        self.signal_blocked();
-        ret
+        self.reader.is_none()
     }
 
     pub(crate) fn update(&mut self) -> std::io::Result<()> {
         if self.is_dead() {
             return Ok(());
         }
-        self.block_till_ready();
         let r = self.reader.as_mut().ok_or_else(util::error)?;
         let tmp = r.stream_position()?;
         r.seek(std::io::SeekFrom::Start(0))?; // affects BufRead::lines
@@ -59,48 +52,51 @@ impl Buffer {
             self.maxline += 1;
         }
         r.seek(std::io::SeekFrom::Start(tmp))?;
-        self.signal_blocked();
         Ok(())
     }
 
     pub(crate) fn readline(
         &mut self,
-        pos: &mut usize,
-        s: &mut String,
-        standout: &mut bool,
         showlnum: bool,
         blinkline: bool,
-    ) -> std::io::Result<()> {
-        s.clear();
-        if self.reader.as_mut().ok_or_else(util::error)?.read_line(s)? == 0 || s.is_empty() {
+    ) -> std::io::Result<(usize, String, bool)> {
+        let mut s = String::new();
+        if self
+            .reader
+            .as_mut()
+            .ok_or_else(util::error)?
+            .read_line(&mut s)?
+            == 0
+            || s.is_empty()
+        {
             return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
         }
 
         // rstrip \n and then replace % with %%
-        *s = match s.strip_suffix('\n') {
-            Some(v) => v,
-            None => s,
+        if let Some(v) = s.strip_suffix('\n') {
+            s = v.replace('%', "%%");
+        } else {
+            s = s.replace('%', "%%");
         }
-        .to_string()
-        .replace('%', "%%");
 
+        let standout;
         if blinkline {
             if self.curline >= self.chunk.len() {
-                self.chunk.resize(self.chunk.len() * 2 + 1, "".to_string());
+                self.chunk.resize(self.chunk.len() * 2 + 1, String::new());
             }
-            *standout =
+            standout =
                 !self.chunk[self.curline].is_empty() && self.chunk[self.curline] != s.as_str();
             self.chunk[self.curline] = s.clone();
         } else {
-            *standout = false;
+            standout = false;
         }
 
-        *pos = self.curline;
+        let pos = self.curline;
         self.curline += 1;
         if showlnum {
-            *s = format!("{} {}", self.curline, s);
+            s = format!("{} {}", self.curline, s);
         }
-        Ok(())
+        Ok((pos, s, standout))
     }
 
     // caller needs to test if ready
@@ -111,13 +107,5 @@ impl Buffer {
             .seek(std::io::SeekFrom::Start(0))?;
         self.curline = 0;
         Ok(())
-    }
-
-    pub(crate) fn block_till_ready(&mut self) {
-        // NOP unless fine grained locking
-    }
-
-    pub(crate) fn signal_blocked(&mut self) {
-        // NOP unless fine grained locking
     }
 }

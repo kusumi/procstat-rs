@@ -145,9 +145,8 @@ pub(crate) fn clear_terminal() -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn flash_terminal() -> Result<()> {
+pub(crate) fn flash_terminal() {
     ncurses::flash();
-    Ok(())
 }
 
 pub(crate) fn alloc_screen(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Result<Screen> {

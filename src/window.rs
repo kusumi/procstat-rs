@@ -118,26 +118,16 @@ impl Window {
             return Ok(());
         }
 
-        let mut pos = 0;
         let mut y = 0;
-        let mut s = String::new();
-        let mut standout = false;
         let offset = self.offset;
         let xlen = self.panel.get_xlen();
 
-        self.buffer.block_till_ready();
         self.panel.erase()?;
-
         loop {
-            if self
-                .buffer
-                .readline(&mut pos, &mut s, &mut standout, showlnum, blinkline)
-                .is_err()
-            {
+            let Ok((pos, mut s, standout)) = self.buffer.readline(showlnum, blinkline) else {
                 break;
-            }
+            };
             // C++ / Go version with fine grained lock checks ylen/xlen/offset mismatch here
-
             if pos < offset {
                 continue;
             }
@@ -155,10 +145,8 @@ impl Window {
                 }
             }
         }
-
         self.panel.refresh()?;
         self.buffer.clear()?;
-        self.buffer.signal_blocked();
         Ok(())
     }
 }

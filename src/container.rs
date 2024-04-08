@@ -35,7 +35,7 @@ impl Default for Container {
 }
 
 impl Container {
-    pub(crate) fn new(args: Vec<String>, attr: screen::Attr, opt: &Opt) -> Result<Self> {
+    pub(crate) fn new(args: &[String], attr: screen::Attr, opt: &Opt) -> Result<Self> {
         let mut co = Self {
             attr,
             ..Default::default()
@@ -44,7 +44,7 @@ impl Container {
         Ok(co)
     }
 
-    fn init(&mut self, args: Vec<String>, opt: &Opt) -> Result<()> {
+    fn init(&mut self, args: &[String], opt: &Opt) -> Result<()> {
         self.build_window(opt)?;
         for (i, f) in args.iter().enumerate() {
             if !util::is_regular_file(f) {
@@ -225,36 +225,30 @@ impl Container {
         } else if x == u32::from('l') || x == screen::KBD_RIGHT {
             self.goto_next_window()?;
         } else if x == u32::from('0') {
-            let w = &mut self.v[self.ci];
-            w.goto_head();
+            self.v[self.ci].goto_head();
             cv.notify_all();
         } else if x == u32::from('$') {
-            let w = &mut self.v[self.ci];
-            w.goto_tail();
+            self.v[self.ci].goto_tail();
             cv.notify_all();
         } else if x == u32::from('k') || x == screen::KBD_UP {
-            let w = &mut self.v[self.ci];
-            w.goto_current(-1);
+            self.v[self.ci].goto_current(-1);
             cv.notify_all();
         } else if x == u32::from('j') || x == screen::KBD_DOWN {
-            let w = &mut self.v[self.ci];
-            w.goto_current(1);
+            self.v[self.ci].goto_current(1);
             cv.notify_all();
         } else if x == screen::kbd_ctrl(u32::from('B')) {
-            let w = &mut self.v[self.ci];
-            w.goto_current(-isize::try_from(self.attr.get_terminal_lines()).unwrap());
+            self.v[self.ci].goto_current(-isize::try_from(self.attr.get_terminal_lines()).unwrap());
             cv.notify_all();
         } else if x == screen::kbd_ctrl(u32::from('U')) {
-            let w = &mut self.v[self.ci];
-            w.goto_current(-isize::try_from(self.attr.get_terminal_lines()).unwrap() / 2);
+            self.v[self.ci]
+                .goto_current(-isize::try_from(self.attr.get_terminal_lines()).unwrap() / 2);
             cv.notify_all();
         } else if x == screen::kbd_ctrl(u32::from('F')) {
-            let w = &mut self.v[self.ci];
-            w.goto_current(isize::try_from(self.attr.get_terminal_lines()).unwrap());
+            self.v[self.ci].goto_current(isize::try_from(self.attr.get_terminal_lines()).unwrap());
             cv.notify_all();
         } else if x == screen::kbd_ctrl(u32::from('D')) {
-            let w = &mut self.v[self.ci];
-            w.goto_current(isize::try_from(self.attr.get_terminal_lines()).unwrap() / 2);
+            self.v[self.ci]
+                .goto_current(isize::try_from(self.attr.get_terminal_lines()).unwrap() / 2);
             cv.notify_all();
         } else {
             cv.notify_all();
@@ -285,18 +279,15 @@ fn thread_create_watch(
             match co.inotify.read_events(&mut buf) {
                 Ok(v) => {
                     for event in v {
-                        match co.wih.get(&event.wd.get_watch_descriptor_id()) {
-                            Some(&i) => {
-                                log::info!("{:?} watch {} {:?}", tid, i, co.wih);
-                                co.v[i].update_buffer().unwrap();
-                            }
-                            _ => {
-                                log::info!("{:?} {:?}", tid, event);
-                                return;
-                            }
+                        if let Some(&i) = co.wih.get(&event.wd.get_watch_descriptor_id()) {
+                            log::info!("{:?} watch {} {:?}", tid, i, co.wih);
+                            co.v[i].update_buffer().unwrap();
+                        } else {
+                            log::info!("{:?} {:?}", tid, event);
+                            return;
                         }
                     }
-                    screen::flash_terminal().unwrap();
+                    screen::flash_terminal();
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => (),
                 Err(e) => {
@@ -367,7 +358,7 @@ pub(crate) fn thread_create(
     let mut thrv = Vec::new();
     thrv.push(thread_create_watch(pair));
     thrv.extend(thread_create_window(pair, opt));
-    for thr in thrv.iter() {
+    for thr in &thrv {
         log::info!("{}: {:?}", stringify!(thread_create), thr.thread().id());
     }
     thrv

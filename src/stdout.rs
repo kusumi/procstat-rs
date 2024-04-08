@@ -89,9 +89,7 @@ pub(crate) fn clear_terminal() -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn flash_terminal() -> Result<()> {
-    Ok(())
-}
+pub(crate) fn flash_terminal() {}
 
 pub(crate) fn alloc_screen(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -> Result<Screen> {
     let _mtx = MTX.lock()?;
