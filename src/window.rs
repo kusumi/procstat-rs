@@ -2,6 +2,7 @@ use crate::buffer;
 use crate::frame;
 use crate::panel;
 use crate::panel::PanelImpl;
+use crate::util;
 use crate::Result;
 
 #[cfg(feature = "curses")]
@@ -60,23 +61,13 @@ impl Window {
         self.buffer.init(f)?; // still had no path set at this point
         self.frame.set_title(f)?;
         self.panel.set_title(f)?;
-        log::info!(
-            "{}: {:?} {:?}",
-            stringify!(attach_buffer),
-            self.panel,
-            self.frame,
-        );
+        log::info!("{}: {:?} {:?}", util::function!(), self.panel, self.frame,);
         Ok(())
     }
 
     pub(crate) fn update_buffer(&mut self) -> std::io::Result<()> {
         self.buffer.update()?;
-        log::info!(
-            "{}: {:?} {:?}",
-            stringify!(update_buffer),
-            self.panel,
-            self.frame,
-        );
+        log::info!("{}: {:?} {:?}", util::function!(), self.panel, self.frame,);
         Ok(())
     }
 

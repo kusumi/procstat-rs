@@ -86,7 +86,7 @@ impl Buffer {
             }
             standout =
                 !self.chunk[self.curline].is_empty() && self.chunk[self.curline] != s.as_str();
-            self.chunk[self.curline] = s.clone();
+            self.chunk[self.curline].clone_from(&s);
         } else {
             standout = false;
         }

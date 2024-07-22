@@ -8,7 +8,9 @@ mod panel;
 mod util;
 mod window;
 
-const VERSION: [i32; 3] = [0, 1, 6];
+const VERSION: [i32; 3] = [0, 1, 7];
+
+const PROCSTAT_HOME: &str = "PROCSTAT_HOME";
 
 #[cfg(feature = "curses")]
 mod curses;
@@ -86,37 +88,50 @@ fn usage(progname: &str, opts: &getopts::Options) {
     );
 }
 
-fn init_log(f: &str) -> Result<()> {
-    simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
-        simplelog::LevelFilter::Info,
-        simplelog::Config::default(),
-        std::fs::File::create(f)?,
-    )])?;
-    assert!(std::path::Path::new(&f).is_file());
-    Ok(())
+fn init_file_logger(progname: &str) -> Result<()> {
+    let home = util::get_home_path();
+    let name = format!(".{}.log", util::get_basename(progname)?);
+    let f = match std::env::var(PROCSTAT_HOME) {
+        Ok(v) => {
+            if util::is_dir(&v) {
+                util::join_path(&v, &name)
+            } else {
+                println!("{PROCSTAT_HOME} not a directory, using {home} instead");
+                util::join_path(&home, &name)
+            }
+        }
+        Err(_) => util::join_path(&home, &name),
+    };
+    Ok(simplelog::CombinedLogger::init(vec![
+        simplelog::WriteLogger::new(
+            simplelog::LevelFilter::Trace,
+            simplelog::Config::default(),
+            std::fs::File::create(f)?,
+        ),
+    ])?)
 }
 
 static mut INTERRUPTED: bool = false;
 
 extern "C" fn sigint_handler(_: libc::c_int) {
-    log::info!("{}: SIGINT", stringify!(sigint_handler));
+    log::info!("{}: SIGINT", util::function!());
     unsafe {
         INTERRUPTED = true;
     }
 }
 
-pub(crate) fn is_interrupted() -> bool {
+fn is_interrupted() -> bool {
     unsafe { INTERRUPTED }
 }
 
 extern "C" fn atexit_handler() {
-    log::info!("{}: atexit", stringify!(atexit_handler));
+    log::info!("{}: atexit", util::function!());
     screen::cleanup_screen().unwrap();
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let progname = args[0].clone();
+    let progname = &args[0];
 
     let mut opts = getopts::Options::new();
     opts.optopt(
@@ -166,13 +181,20 @@ fn main() {
     opts.optflag("v", "version", "Print version and exit");
     opts.optflag("h", "help", "print this help menu");
 
-    let matches = opts.parse(&args[1..]).unwrap();
+    let matches = match opts.parse(&args[1..]) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("{e}");
+            usage(progname, &opts);
+            std::process::exit(1);
+        }
+    };
     if matches.opt_present("v") {
         print_version();
         std::process::exit(1);
     }
     if matches.opt_present("h") {
-        usage(&progname, &opts);
+        usage(progname, &opts);
         std::process::exit(1);
     }
 
@@ -192,7 +214,13 @@ fn main() {
         None => -1,
     };
     opt.sinterval = match matches.opt_str("t") {
-        Some(v) => v.parse::<u64>().unwrap(),
+        Some(v) => match v.parse::<u64>() {
+            Ok(v) => v,
+            Err(e) => {
+                println!("{v}: {e}");
+                std::process::exit(1);
+            }
+        },
         None => 1,
     };
     if matches.opt_present("m") {
@@ -208,7 +236,7 @@ fn main() {
     opt.debug = matches.opt_present("debug");
 
     if matches.free.is_empty() {
-        usage(&progname, &opts);
+        usage(progname, &opts);
         std::process::exit(1);
     }
 
@@ -219,31 +247,68 @@ fn main() {
     }
     for x in layout.chars() {
         if ('1'..='9').contains(&x) {
-            opt.layout.push(x.to_digit(10).unwrap().try_into().unwrap());
+            let v = if let Some(v) = x.to_digit(10) {
+                match v.try_into() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        println!("invalid value {v}: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                println!("invalid layout {layout}");
+                std::process::exit(1);
+            };
+            opt.layout.push(v);
         } else if ('a'..='f').contains(&x) {
-            opt.layout.push(x.to_digit(16).unwrap().try_into().unwrap());
+            let v = if let Some(v) = x.to_digit(16) {
+                match v.try_into() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        println!("invalid value {v}: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                println!("invalid layout {layout}");
+                std::process::exit(1);
+            };
+            opt.layout.push(v);
         } else {
             opt.layout.push(0);
         }
     }
 
     if opt.debug {
-        let f = util::join_path(&util::get_home_path(), ".procstat.log");
-        init_log(&f).unwrap();
+        if let Err(e) = init_file_logger(progname) {
+            println!("{e}");
+            std::process::exit(1);
+        }
+        log::info!("{opt:?}");
     }
 
-    let attr = screen::init_screen(opt.fgcolor, opt.bgcolor).unwrap();
-    log::info!("{}: {:?}", stringify!(main), attr);
+    let attr = match screen::init_screen(opt.fgcolor, opt.bgcolor) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("{e}");
+            std::process::exit(1);
+        }
+    };
+    log::info!("{}: {:?}", util::function!(), attr);
 
     unsafe {
         libc::atexit(atexit_handler);
         libc::signal(libc::SIGINT, sigint_handler as usize);
     }
 
-    let pair = std::sync::Arc::new((
-        std::sync::Mutex::new(container::Container::new(&args, attr, &opt).unwrap()),
-        std::sync::Condvar::new(),
-    ));
+    let co = match container::Container::new(&args, attr, &opt) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("{e}");
+            std::process::exit(1);
+        }
+    };
+    let pair = std::sync::Arc::new((std::sync::Mutex::new(co), std::sync::Condvar::new()));
     let mut thrv = container::thread_create(&pair, &opt);
     loop {
         // XXX Do something outside of co.lock(), otherwise this loop never
@@ -251,7 +316,12 @@ fn main() {
         let x = screen::read_incoming();
         let (co, cv) = &*pair;
         let mut co = co.lock().unwrap();
-        co.parse_event(x, cv, &opt).unwrap();
+        if let Err(e) = co.parse_event(x, cv, &opt) {
+            println!("{e}");
+            co.set_interrupted();
+            cv.notify_all();
+            break;
+        }
         if is_interrupted() {
             co.set_interrupted();
             cv.notify_all();
@@ -262,7 +332,7 @@ fn main() {
 
     log::info!(
         "{}: {:?} exit",
-        stringify!(main),
+        util::function!(),
         std::thread::current().id()
     );
 }

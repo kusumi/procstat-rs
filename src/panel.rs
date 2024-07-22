@@ -19,9 +19,12 @@ pub(crate) trait PanelImpl {
     fn new(ylen: usize, xlen: usize, ypos: usize, xpos: usize, attr: &screen::Attr) -> Result<Self>
     where
         Self: Sized;
+    #[allow(dead_code)]
     fn get_ylen(&self) -> usize;
     fn get_xlen(&self) -> usize;
+    #[allow(dead_code)]
     fn get_ypos(&self) -> usize;
+    #[allow(dead_code)]
     fn get_xpos(&self) -> usize;
     fn set_title(&mut self, _s: &str) -> Result<()> {
         Ok(())

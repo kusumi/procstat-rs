@@ -33,12 +33,12 @@ impl Attr {
     }
 
     pub(crate) fn get_terminal_lines(&self) -> usize {
-        assert!(self.lines != 0);
+        assert_ne!(self.lines, 0);
         self.lines
     }
 
     pub(crate) fn get_terminal_cols(&self) -> usize {
-        assert!(self.cols != 0);
+        assert_ne!(self.cols, 0);
         self.cols
     }
 
@@ -59,7 +59,7 @@ pub(crate) fn update_terminal_size(attr: &mut Attr) -> Result<()> {
     if let Some((w, h)) = term_size::dimensions() {
         attr.lines = h;
         attr.cols = w;
-        log::info!("{}: {:?}", stringify!(update_terminal_size), attr);
+        log::info!("{}: {:?}", util::function!(), attr);
         Ok(())
     } else {
         Err(Box::new(util::error()))
@@ -96,7 +96,7 @@ pub(crate) fn alloc_screen(ylen: usize, xlen: usize, ypos: usize, xpos: usize) -
     let scr = Screen::new(ylen, xlen, ypos, xpos);
     println!(
         "{}: {:?} {} {} {} {}",
-        stringify!(alloc_screen),
+        util::function!(),
         scr,
         ylen,
         xlen,
@@ -111,7 +111,7 @@ impl Screen {
         let scr = Self {};
         println!(
             "{}: {:?} {} {} {} {}",
-            stringify!(new),
+            util::function!(),
             scr,
             ylen,
             xlen,
@@ -123,7 +123,7 @@ impl Screen {
 
     pub(crate) fn delete(&mut self) -> Result<()> {
         let _mtx = MTX.lock()?;
-        println!("{}: {:?}", stringify!(delete), self);
+        println!("{}: {:?}", util::function!(), self);
         Ok(())
     }
 
@@ -138,7 +138,7 @@ impl Screen {
         let _mtx = MTX.lock()?;
         println!(
             "{}: {:?} {} {} {} {} \"{}\"",
-            stringify!(print),
+            util::function!(),
             self,
             y,
             x,

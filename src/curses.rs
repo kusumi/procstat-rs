@@ -82,9 +82,9 @@ pub(crate) fn update_terminal_size(attr: &mut Attr) -> Result<()> {
     let mut y = 0;
     let mut x = 0;
     ncurses::getmaxyx(ncurses::stdscr(), &mut y, &mut x);
-    attr.lines = y.try_into().unwrap();
-    attr.cols = x.try_into().unwrap();
-    log::info!("{}: {:?}", stringify!(update_terminal_size), attr);
+    attr.lines = y.try_into()?;
+    attr.cols = x.try_into()?;
+    log::info!("{}: {:?}", util::function!(), attr);
     Ok(())
 }
 
@@ -195,7 +195,7 @@ impl Screen {
             ncurses::A_NORMAL()
         };
         ncurses::wattron(self.win, attr);
-        ncurses::mvwprintw(self.win, y.try_into().unwrap(), x.try_into().unwrap(), s);
+        ncurses::mvwprintw(self.win, y.try_into()?, x.try_into()?, s);
         ncurses::wattroff(self.win, attr);
         Ok(())
     }
@@ -214,13 +214,13 @@ impl Screen {
 
     pub(crate) fn resize(&mut self, ylen: usize, xlen: usize) -> Result<()> {
         let _mtx = MTX.lock()?;
-        ncurses::wresize(self.win, ylen.try_into().unwrap(), xlen.try_into().unwrap());
+        ncurses::wresize(self.win, ylen.try_into()?, xlen.try_into()?);
         Ok(())
     }
 
     pub(crate) fn r#move(&mut self, ypos: usize, xpos: usize) -> Result<()> {
         let _mtx = MTX.lock()?;
-        ncurses::mvwin(self.win, ypos.try_into().unwrap(), xpos.try_into().unwrap());
+        ncurses::mvwin(self.win, ypos.try_into()?, xpos.try_into()?);
         Ok(())
     }
 

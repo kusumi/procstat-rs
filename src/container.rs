@@ -48,12 +48,12 @@ impl Container {
         self.build_window(opt)?;
         for (i, f) in args.iter().enumerate() {
             if !util::is_regular_file(f) {
-                log::info!("{}: No such regular file {}", stringify!(init), f);
+                log::info!("{}: No such regular file {}", util::function!(), f);
                 continue;
             }
             if i < self.v.len() {
                 if let Err(e) = self.v[i].attach_buffer(f) {
-                    log::info!("{}: {}", stringify!(init), e);
+                    log::info!("{}: {}", util::function!(), e);
                     break;
                 }
                 self.biv.push(i);
@@ -200,7 +200,7 @@ impl Container {
         }
         log::info!(
             "{}: seq {}, len({}, {}), pos({}, {})",
-            stringify!(alloc_window),
+            util::function!(),
             seq,
             ylen,
             xlen,
@@ -212,10 +212,10 @@ impl Container {
 
     pub(crate) fn parse_event(&mut self, x: i32, cv: &std::sync::Condvar, opt: &Opt) -> Result<()> {
         if x == screen::KBD_ERR {
-            //log::info!("{}: KBD_ERR", stringify!(parse_event));
+            //log::info!("{}: KBD_ERR", util::function!());
             return Ok(());
         }
-        let x = u32::try_from(x).unwrap();
+        let x = u32::try_from(x)?;
         if x == screen::KBD_RESIZE || x == screen::kbd_ctrl(u32::from('l')) {
             screen::update_terminal_size(&mut self.attr)?;
             screen::clear_terminal()?;
@@ -237,18 +237,16 @@ impl Container {
             self.v[self.ci].goto_current(1);
             cv.notify_all();
         } else if x == screen::kbd_ctrl(u32::from('B')) {
-            self.v[self.ci].goto_current(-isize::try_from(self.attr.get_terminal_lines()).unwrap());
+            self.v[self.ci].goto_current(-isize::try_from(self.attr.get_terminal_lines())?);
             cv.notify_all();
         } else if x == screen::kbd_ctrl(u32::from('U')) {
-            self.v[self.ci]
-                .goto_current(-isize::try_from(self.attr.get_terminal_lines()).unwrap() / 2);
+            self.v[self.ci].goto_current(-isize::try_from(self.attr.get_terminal_lines())? / 2);
             cv.notify_all();
         } else if x == screen::kbd_ctrl(u32::from('F')) {
-            self.v[self.ci].goto_current(isize::try_from(self.attr.get_terminal_lines()).unwrap());
+            self.v[self.ci].goto_current(isize::try_from(self.attr.get_terminal_lines())?);
             cv.notify_all();
         } else if x == screen::kbd_ctrl(u32::from('D')) {
-            self.v[self.ci]
-                .goto_current(isize::try_from(self.attr.get_terminal_lines()).unwrap() / 2);
+            self.v[self.ci].goto_current(isize::try_from(self.attr.get_terminal_lines())? / 2);
             cv.notify_all();
         } else {
             cv.notify_all();
@@ -258,7 +256,7 @@ impl Container {
 
     pub(crate) fn set_interrupted(&mut self) {
         self.is_interrupted = true;
-        log::info!("{}: interrupted", stringify!(set_interrupted));
+        log::info!("{}: interrupted", util::function!());
     }
 
     pub(crate) fn is_interrupted(&self) -> bool {
@@ -359,14 +357,14 @@ pub(crate) fn thread_create(
     thrv.push(thread_create_watch(pair));
     thrv.extend(thread_create_window(pair, opt));
     for thr in &thrv {
-        log::info!("{}: {:?}", stringify!(thread_create), thr.thread().id());
+        log::info!("{}: {:?}", util::function!(), thr.thread().id());
     }
     thrv
 }
 
 pub(crate) fn thread_join(thrv: &mut Vec<std::thread::JoinHandle<()>>) {
     while let Some(thr) = thrv.pop() {
-        log::info!("{}: {:?}", stringify!(thread_join), thr.thread().id());
+        log::info!("{}: {:?}", util::function!(), thr.thread().id());
         thr.join().unwrap();
     }
 }
