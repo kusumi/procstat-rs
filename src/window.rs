@@ -84,18 +84,19 @@ impl Window {
         self.offset = self.buffer.get_max_line();
     }
 
-    pub(crate) fn goto_current(&mut self, d: isize) {
+    pub(crate) fn goto_current(&mut self, d: isize) -> Result<()> {
         self.offset = if d < 0 {
             if self.offset < d.unsigned_abs() {
                 0
             } else {
                 self.offset - d.unsigned_abs()
             }
-        } else if self.offset + usize::try_from(d).unwrap() > self.buffer.get_max_line() {
+        } else if self.offset + usize::try_from(d)? > self.buffer.get_max_line() {
             self.buffer.get_max_line()
         } else {
-            self.offset + usize::try_from(d).unwrap()
-        }
+            self.offset + usize::try_from(d)?
+        };
+        Ok(())
     }
 
     pub(crate) fn repaint(

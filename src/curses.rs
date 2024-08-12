@@ -8,12 +8,12 @@ lazy_static! {
 
 // taken from /usr/include/curses.h
 // XXX ncurses::KEY_xxx ?
-pub(crate) const KBD_ERR: i32 = -1;
-pub(crate) const KBD_UP: u32 = 0o403;
-pub(crate) const KBD_DOWN: u32 = 0o402;
-pub(crate) const KBD_LEFT: u32 = 0o404;
-pub(crate) const KBD_RIGHT: u32 = 0o405;
-pub(crate) const KBD_RESIZE: u32 = 0o632;
+pub(crate) const KEY_ERR: i32 = -1;
+pub(crate) const KEY_UP: u32 = 0o403;
+pub(crate) const KEY_DOWN: u32 = 0o402;
+pub(crate) const KEY_LEFT: u32 = 0o404;
+pub(crate) const KEY_RIGHT: u32 = 0o405;
+pub(crate) const KEY_RESIZE: u32 = 0o632;
 
 // taken from /usr/include/curses.h
 // XXX ncurses::COLOR_xxx ?
@@ -26,7 +26,7 @@ const COLOR_MAGENTA: i16 = 5;
 const COLOR_CYAN: i16 = 6;
 const COLOR_WHITE: i16 = 7;
 
-pub(crate) fn kbd_ctrl(x: u32) -> u32 {
+pub(crate) fn key_ctrl(x: u32) -> u32 {
     x & 0x1F
 }
 
@@ -68,14 +68,6 @@ pub(crate) struct Screen {
 }
 
 unsafe impl Send for Screen {}
-
-impl Default for Screen {
-    fn default() -> Self {
-        Self {
-            win: ncurses::newwin(0, 0, 0, 0),
-        }
-    }
-}
 
 pub(crate) fn update_terminal_size(attr: &mut Attr) -> Result<()> {
     let _mtx = MTX.lock()?;

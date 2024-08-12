@@ -8,7 +8,7 @@ mod panel;
 mod util;
 mod window;
 
-const VERSION: [i32; 3] = [0, 1, 7];
+const VERSION: [i32; 3] = [0, 2, 0];
 
 const PROCSTAT_HOME: &str = "PROCSTAT_HOME";
 
@@ -235,15 +235,12 @@ fn main() {
     opt.usedelay = matches.opt_present("usedelay");
     opt.debug = matches.opt_present("debug");
 
-    if matches.free.is_empty() {
-        usage(progname, &opts);
-        std::process::exit(1);
-    }
-
     let args = matches.free;
     if layout.is_empty() {
         layout = "1".repeat(args.len());
-        assert!(!layout.is_empty());
+        if layout.is_empty() {
+            layout = "1".to_string();
+        }
     }
     for x in layout.chars() {
         if ('1'..='9').contains(&x) {
@@ -311,8 +308,9 @@ fn main() {
     let pair = std::sync::Arc::new((std::sync::Mutex::new(co), std::sync::Condvar::new()));
     let mut thrv = container::thread_create(&pair, &opt);
     loop {
-        // XXX Do something outside of co.lock(), otherwise this loop never
-        // releases the mutex, and as a result window threads get blocked.
+        // XXX Do something (screen::read_incoming()) outside of co.lock(),
+        // otherwise this loop never releases the mutex, and as a result window
+        // threads get blocked without being updated.
         let x = screen::read_incoming();
         let (co, cv) = &*pair;
         let mut co = co.lock().unwrap();

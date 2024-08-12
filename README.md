@@ -1,4 +1,4 @@
-procstat-rs ([v0.1.7](https://github.com/kusumi/procstat-rs/releases/tag/v0.1.7))
+procstat-rs ([v0.2.0](https://github.com/kusumi/procstat-rs/releases/tag/v0.2.0))
 ========
 
 ## About
@@ -17,7 +17,7 @@ Recent version of Rust
 
 ## Usage
 
-    $ ./target/release/procstat-rs
+    $ ./target/release/procstat-rs -h
     usage: ./target/release/procstat-rs [<options>] <paths>
     
     Options:

@@ -7,15 +7,15 @@ lazy_static! {
     static ref MTX: std::sync::Mutex<i32> = std::sync::Mutex::new(0);
 }
 
-pub(crate) const KBD_ERR: i32 = 0xDEAD;
-const KBD_BASE: u32 = 0xBEEF;
-pub(crate) const KBD_UP: u32 = KBD_BASE;
-pub(crate) const KBD_DOWN: u32 = KBD_BASE + 1;
-pub(crate) const KBD_LEFT: u32 = KBD_BASE + 2;
-pub(crate) const KBD_RIGHT: u32 = KBD_BASE + 3;
-pub(crate) const KBD_RESIZE: u32 = KBD_BASE + 4;
+pub(crate) const KEY_ERR: i32 = 0xDEAD;
+const KEY_BASE: u32 = KEY_ERR as u32;
+pub(crate) const KEY_UP: u32 = KEY_BASE;
+pub(crate) const KEY_DOWN: u32 = KEY_BASE + 1;
+pub(crate) const KEY_LEFT: u32 = KEY_BASE + 2;
+pub(crate) const KEY_RIGHT: u32 = KEY_BASE + 3;
+pub(crate) const KEY_RESIZE: u32 = KEY_BASE + 4;
 
-pub(crate) fn kbd_ctrl(x: u32) -> u32 {
+pub(crate) fn key_ctrl(x: u32) -> u32 {
     x & 0x1F
 }
 
@@ -51,7 +51,7 @@ impl Attr {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Screen {}
 
 pub(crate) fn update_terminal_size(attr: &mut Attr) -> Result<()> {
@@ -82,7 +82,7 @@ pub(crate) fn cleanup_screen() -> Result<()> {
 
 pub(crate) fn read_incoming() -> i32 {
     std::thread::sleep(std::time::Duration::from_secs(1));
-    KBD_ERR
+    KEY_ERR
 }
 
 pub(crate) fn clear_terminal() -> Result<()> {

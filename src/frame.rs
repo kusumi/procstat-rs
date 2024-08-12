@@ -8,7 +8,7 @@ use crate::curses as screen;
 #[cfg(feature = "stdout")]
 use crate::stdout as screen;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Frame {
     scr: screen::Screen,
     ylen: usize,
@@ -34,12 +34,14 @@ impl panel::PanelImpl for Frame {
         attr: &screen::Attr,
     ) -> Result<Self> {
         let mut frame = Self {
-            scr: screen::alloc_screen(ylen, xlen, ypos, xpos)?, // alloc + delete
+            scr: screen::alloc_screen(ylen, xlen, ypos, xpos)?,
+            ylen,
+            xlen,
+            ypos,
+            xpos,
             title: String::new(),
             focus: false,
-            ..Default::default()
         };
-        frame.update_size(ylen, xlen, ypos, xpos);
         frame.scr.bkgd(attr.get_color_attr())?;
         frame.scr.r#box()?;
         Ok(frame)
@@ -87,10 +89,13 @@ impl panel::PanelImpl for Frame {
         xpos: usize,
         attr: &mut screen::Attr,
     ) -> Result<()> {
+        self.ylen = ylen;
+        self.xlen = xlen;
+        self.ypos = ypos;
+        self.xpos = xpos;
         self.scr.resize(self.ylen, self.xlen)?;
         self.scr.r#move(self.ypos, self.xpos)?;
         self.scr.r#box()?;
-        self.update_size(ylen, xlen, ypos, xpos);
         self.print_title(attr.get_standout_attr())
     }
 
@@ -100,13 +105,6 @@ impl panel::PanelImpl for Frame {
 }
 
 impl Frame {
-    fn update_size(&mut self, ylen: usize, xlen: usize, ypos: usize, xpos: usize) {
-        self.ylen = ylen;
-        self.xlen = xlen;
-        self.ypos = ypos;
-        self.xpos = xpos;
-    }
-
     fn print_title(&mut self, standout_attr: u32) -> Result<()> {
         self.print(0, 1, self.focus, standout_attr, &self.title)?;
         self.refresh()

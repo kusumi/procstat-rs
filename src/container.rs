@@ -45,7 +45,7 @@ impl Container {
     }
 
     fn init(&mut self, args: &[String], opt: &Opt) -> Result<()> {
-        self.build_window(opt)?;
+        self.build_window(None, opt)?;
         for (i, f) in args.iter().enumerate() {
             if !util::is_regular_file(f) {
                 log::info!("{}: No such regular file {}", util::function!(), f);
@@ -107,15 +107,15 @@ impl Container {
         Ok(())
     }
 
-    fn build_window(&mut self, opt: &Opt) -> Result<()> {
+    fn build_window(&mut self, cv: Option<&std::sync::Condvar>, opt: &Opt) -> Result<()> {
         if !opt.rotatecol {
-            self.build_window_xy(opt)
+            self.build_window_xy(cv, opt)
         } else {
-            self.build_window_yx(opt)
+            self.build_window_yx(cv, opt)
         }
     }
 
-    fn build_window_xy(&mut self, opt: &Opt) -> Result<()> {
+    fn build_window_xy(&mut self, cv: Option<&std::sync::Condvar>, opt: &Opt) -> Result<()> {
         let mut seq = 0;
         let xx = self.attr.get_terminal_cols();
         let yy = self.attr.get_terminal_lines();
@@ -142,14 +142,14 @@ impl Container {
                 if j == y - 1 {
                     ylen += yr;
                 }
-                self.alloc_window(seq, ylen, xlen, ypos, xpos)?;
+                self.alloc_window(seq, ylen, xlen, ypos, xpos, cv)?;
                 seq += 1;
             }
         }
         Ok(())
     }
 
-    fn build_window_yx(&mut self, opt: &Opt) -> Result<()> {
+    fn build_window_yx(&mut self, cv: Option<&std::sync::Condvar>, opt: &Opt) -> Result<()> {
         let mut seq = 0;
         let yy = self.attr.get_terminal_lines();
         let xx = self.attr.get_terminal_cols();
@@ -176,7 +176,7 @@ impl Container {
                 if j == x - 1 {
                     xlen += xr;
                 }
-                self.alloc_window(seq, ylen, xlen, ypos, xpos)?;
+                self.alloc_window(seq, ylen, xlen, ypos, xpos, cv)?;
                 seq += 1;
             }
         }
@@ -190,10 +190,12 @@ impl Container {
         xlen: usize,
         ypos: usize,
         xpos: usize,
+        cv: Option<&std::sync::Condvar>,
     ) -> Result<()> {
         if self.v.get(seq).is_some() {
             self.v[seq].resize(ylen, xlen, ypos, xpos, &mut self.attr)?;
-            //self.v[seq].signal(); // XXX
+            assert!(cv.is_some());
+            cv.unwrap().notify_all();
         } else {
             self.v
                 .push(window::Window::new(ylen, xlen, ypos, xpos, &self.attr)?);
@@ -211,18 +213,18 @@ impl Container {
     }
 
     pub(crate) fn parse_event(&mut self, x: i32, cv: &std::sync::Condvar, opt: &Opt) -> Result<()> {
-        if x == screen::KBD_ERR {
-            //log::info!("{}: KBD_ERR", util::function!());
+        if x == screen::KEY_ERR {
+            //log::info!("{}: KEY_ERR", util::function!());
             return Ok(());
         }
         let x = u32::try_from(x)?;
-        if x == screen::KBD_RESIZE || x == screen::kbd_ctrl(u32::from('l')) {
+        if x == screen::KEY_RESIZE || x == screen::key_ctrl(u32::from('l')) {
             screen::update_terminal_size(&mut self.attr)?;
             screen::clear_terminal()?;
-            self.build_window(opt)?;
-        } else if x == u32::from('h') || x == screen::KBD_LEFT {
+            self.build_window(Some(cv), opt)?;
+        } else if x == u32::from('h') || x == screen::KEY_LEFT {
             self.goto_prev_window()?;
-        } else if x == u32::from('l') || x == screen::KBD_RIGHT {
+        } else if x == u32::from('l') || x == screen::KEY_RIGHT {
             self.goto_next_window()?;
         } else if x == u32::from('0') {
             self.v[self.ci].goto_head();
@@ -230,23 +232,23 @@ impl Container {
         } else if x == u32::from('$') {
             self.v[self.ci].goto_tail();
             cv.notify_all();
-        } else if x == u32::from('k') || x == screen::KBD_UP {
-            self.v[self.ci].goto_current(-1);
+        } else if x == u32::from('k') || x == screen::KEY_UP {
+            self.v[self.ci].goto_current(-1)?;
             cv.notify_all();
-        } else if x == u32::from('j') || x == screen::KBD_DOWN {
-            self.v[self.ci].goto_current(1);
+        } else if x == u32::from('j') || x == screen::KEY_DOWN {
+            self.v[self.ci].goto_current(1)?;
             cv.notify_all();
-        } else if x == screen::kbd_ctrl(u32::from('B')) {
-            self.v[self.ci].goto_current(-isize::try_from(self.attr.get_terminal_lines())?);
+        } else if x == screen::key_ctrl(u32::from('B')) {
+            self.v[self.ci].goto_current(-isize::try_from(self.attr.get_terminal_lines())?)?;
             cv.notify_all();
-        } else if x == screen::kbd_ctrl(u32::from('U')) {
-            self.v[self.ci].goto_current(-isize::try_from(self.attr.get_terminal_lines())? / 2);
+        } else if x == screen::key_ctrl(u32::from('U')) {
+            self.v[self.ci].goto_current(-isize::try_from(self.attr.get_terminal_lines())? / 2)?;
             cv.notify_all();
-        } else if x == screen::kbd_ctrl(u32::from('F')) {
-            self.v[self.ci].goto_current(isize::try_from(self.attr.get_terminal_lines())?);
+        } else if x == screen::key_ctrl(u32::from('F')) {
+            self.v[self.ci].goto_current(isize::try_from(self.attr.get_terminal_lines())?)?;
             cv.notify_all();
-        } else if x == screen::kbd_ctrl(u32::from('D')) {
-            self.v[self.ci].goto_current(isize::try_from(self.attr.get_terminal_lines())? / 2);
+        } else if x == screen::key_ctrl(u32::from('D')) {
+            self.v[self.ci].goto_current(isize::try_from(self.attr.get_terminal_lines())? / 2)?;
             cv.notify_all();
         } else {
             cv.notify_all();
